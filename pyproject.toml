@@ -1,0 +1,15 @@
+[project]
+name = "crawl-planner"
+version = "0.2.0"
+description = "Pub crawl route optimizer API"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.3.4",
+    "requests>=2.32.5",
+    "tqdm>=4.66.1",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.0.0",
+    "mypy>=1.18.2",
+]
