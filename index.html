@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pub Crawl Planner</title>
+  <link href='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css' rel='stylesheet' />
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div class="container">
+    <div class="map-container">
+      <div id="map"></div>
+    </div>
+
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h1>🍺 Pub Crawl</h1>
+        <p>Plan your perfect route</p>
+      </div>
+
+      <div class="sidebar-content">
+        <div class="error-message" id="errorMessage"></div>
+        <div class="success-message" id="successMessage"></div>
+
+        <div class="form-group">
+          <label>Starting Location</label>
+          <div class="location-input">
+            <input type="text" id="startLocationInput" placeholder="Click on map or enter coordinates" readonly>
+            <button onclick="selectStartLocation()" title="Click map to select">📍</button>
+          </div>
+          <div class="location-display empty" id="startDisplay">Click the map to select a start location</div>
+        </div>
+
+        <div class="form-group">
+          <label>Ending Location</label>
+          <div class="location-input">
+            <input type="text" id="endLocationInput" placeholder="Click on map or enter coordinates" readonly>
+            <button onclick="selectEndLocation()" title="Click map to select">📍</button>
+          </div>
+          <div class="location-display empty" id="endDisplay">Click the map to select an end location</div>
+        </div>
+
+        <div class="form-group">
+          <label for="numPubs">Number of Pubs: <strong id="pubCount">5</strong></label>
+          <input type="number" id="numPubs" min="1" max="20" value="5" onchange="updatePubCount()">
+          <small style="color: #999;">Recommended: 4-10 pubs</small>
+        </div>
+
+        <div class="info-box">
+          <strong>How to use:</strong> Select start & end points on the map, choose the number of pubs, then click "Plan
+          Crawl".
+        </div>
+
+        <div class="button-group">
+          <button class="btn-secondary" onclick="clearForm()">Clear</button>
+          <button class="btn-primary" id="planButton" onclick="planCrawl()" disabled>Plan Crawl</button>
+        </div>
+
+        <div class="loading" id="loading">
+          <div class="spinner"></div>
+          <p>Planning your route...</p>
+        </div>
+
+        <div class="results-section" id="resultsSection" style="display: none;">
+          <h3>📍 Your Route</h3>
+          <div class="route-stats">
+            <div class="stat-card">
+              <div class="stat-value" id="totalDistance">-</div>
+              <div class="stat-label">Distance</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="totalTime">-</div>
+              <div class="stat-label">Est. Time</div>
+            </div>
+          </div>
+          <div class="pubs-list" id="pubsList"></div>
+
+          <div class="directions-section">
+            <h4>🗺️ Directions</h4>
+            <div class="directions-container" id="directionsContainer" style="display: none;">
+              <div class="directions-list" id="directionsList"></div>
+            </div>
+            <button class="btn-directions" onclick="toggleDirections()" id="directionsToggle">Show Directions</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src='https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js'></script>
+  <script src="app.js"></script>
+</body>
+
+</html>

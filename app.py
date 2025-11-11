@@ -4,8 +4,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Optional
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# Load environment variables from .env file
+load_dotenv()
 
 from api_schemas import (
     PlanCrawlRequest,
@@ -42,6 +48,7 @@ class PubCrawlPlannerApp:
             distances_file: Path to precomputed distances file
             raw_data_file: Path to raw data file
         """
+        print("Initializing PubCrawlPlannerApp...")
         self.osrm_url = osrm_url
         self.data_file = data_file
         self.distances_file = distances_file
@@ -86,6 +93,15 @@ class PubCrawlPlannerApp:
         self.app.post("/parse", response_model=dict)(self.parse_raw_data)
         self.app.get("/status", response_model=PrecomputeStatusResponse)(self.get_status)
 
+        # Serve static files
+        self.app.get("/")(self.serve_index)
+        self.app.get("/styles.css")(self.serve_styles)
+        self.app.get("/app.js")(self.serve_app_js)
+
+        # Mount static files directory
+        if os.path.isdir("static"):
+            self.app.mount("/static", StaticFiles(directory="static"), name="static")
+
     @asynccontextmanager
     async def _lifespan(self, app: FastAPI):
         """Startup and shutdown logic"""
@@ -111,7 +127,8 @@ class PubCrawlPlannerApp:
         """Load pub data from data.json"""
         if os.path.exists(self.data_file):
             with open(self.data_file, "r") as f:
-                self.pubs_data = json.load(f)
+                pd = json.load(f)
+                self.pubs_data = [PubModel(**pub) for pub in pd]
             return True
         return False
 
@@ -145,6 +162,20 @@ class PubCrawlPlannerApp:
             return True
         except Exception:
             return False
+
+    async def serve_index(self) -> FileResponse:
+        """Serve the index.html file"""
+        res = FileResponse("index.html", media_type="text/html")
+        print("Serving index.html")
+        return res
+
+    async def serve_styles(self) -> FileResponse:
+        """Serve the styles.css file"""
+        return FileResponse("styles.css", media_type="text/css")
+
+    async def serve_app_js(self) -> FileResponse:
+        """Serve the app.js file"""
+        return FileResponse("app.js", media_type="text/javascript")
 
     async def health_check(self) -> HealthResponse:
         """Check API and OSRM server health"""
@@ -312,6 +343,8 @@ class PubCrawlPlannerApp:
                     geometry=directions["geometry"],
                 )
             except Exception as e:
+                # Log the error for debugging
+                print(f"Error fetching directions from {from_coords} to {to_coords}: {e}")
                 # Fallback if OSRM fails
                 leg = RouteLegModel(
                     from_index=i,
@@ -421,7 +454,7 @@ class PubCrawlPlannerApp:
 
 
 def create_app(
-    osrm_url: str = "http://localhost:5005",
+    osrm_url: str = None,
     data_file: str = "data.json",
     distances_file: str = "pub_distances.pkl",
     raw_data_file: str = "raw.data",
@@ -430,7 +463,7 @@ def create_app(
     Factory function to create and configure the FastAPI app
 
     Args:
-        osrm_url: URL of the OSRM server
+        osrm_url: URL of the OSRM server (default from OSRM_URL env var or http://localhost:5005)
         data_file: Path to parsed pubs data file
         distances_file: Path to precomputed distances file
         raw_data_file: Path to raw data file
@@ -438,6 +471,9 @@ def create_app(
     Returns:
         Configured FastAPI application
     """
+    # Use environment variables if not provided
+    osrm_url = osrm_url or os.getenv("OSRM_URL", "http://localhost:5005")
+
     app_instance = PubCrawlPlannerApp(
         osrm_url=osrm_url,
         data_file=data_file,

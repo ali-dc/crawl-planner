@@ -1,4 +1,17 @@
 services:
+  osrm-builder:
+    image: ghcr.io/project-osrm/osrm-backend
+    container_name: osrm-builder
+    volumes:
+      - ./osrm-data:/data
+      - ./osrm-profiles:/profiles
+    command: [
+      "sh", "-c",
+      "if [ ! -f /data/bristol-latest.osrm ]; then echo 'Building OSRM data with custom foot profile...' && osrm-extract -p /profiles/foot.lua /data/bristol-latest.osm.pbf && osrm-partition /data/bristol-latest.osrm && osrm-customize /data/bristol-latest.osrm && echo 'OSRM data build complete'; else echo 'OSRM data already exists'; fi"
+    ]
+    profiles:
+      - build
+
   osrm:
     image: ghcr.io/project-osrm/osrm-backend
     container_name: osrm-backend

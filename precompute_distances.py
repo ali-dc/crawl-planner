@@ -25,7 +25,7 @@ def precompute_distance_matrix(pub_coords: List[Tuple[float, float]],
     print(f"Computing distances for {n_pubs} pubs...")
 
     # OSRM's table endpoint has a limit (typically 100x100)
-    MAX_BATCH_SIZE = 10
+    MAX_BATCH_SIZE = 50
 
     distances = np.zeros((n_pubs, n_pubs), dtype=np.float32)
 

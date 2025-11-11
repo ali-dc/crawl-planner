@@ -8,7 +8,7 @@ class OSRMClient:
     def __init__(self, base_url: str = 'http://localhost:5005'):
         self.base_url = base_url
 
-    def get_walking_distance(self, from_coords: Tuple[float, float], 
+    def get_walking_distance(self, from_coords: Tuple[float, float],
                             to_coords: Tuple[float, float]) -> float:
         """
         Get walking distance between two points

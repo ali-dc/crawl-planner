@@ -31,7 +31,7 @@ class PubCrawlPlanner:
     def plan_crawl(self, start_point: Tuple[float, float],
                    end_point: Tuple[float, float],
                    num_pubs: int,
-                   uniformity_weight: float = 0.2) -> Dict:
+                   uniformity_weight: float = 0.35) -> Dict:
         """
         Generate optimal pub crawl route
 
@@ -70,11 +70,11 @@ class PubCrawlPlanner:
             'num_pubs': num_pubs
         }
 
-    def select_candidate_pubs(self, start: Tuple[float, float], 
-                             end: Tuple[float, float], 
+    def select_candidate_pubs(self, start: Tuple[float, float],
+                             end: Tuple[float, float],
                              num_candidates: int) -> List[int]:
-        """Select pubs roughly along corridor from start to end"""
-        scores = []
+        """Select pubs roughly along corridor from start to end, sorted by progress"""
+        candidates_with_progress = []
 
         for pub_idx in range(self.n_pubs):
             coords = self.pub_coords[pub_idx]
@@ -86,13 +86,20 @@ class PubCrawlPlanner:
             perp_dist = self.perpendicular_distance(start, end, coords)
 
             # Score: prefer pubs along path, not too far to the side
-            score = perp_dist + abs(progress - 0.5) * 1000
+            proximity_score = perp_dist
 
-            scores.append((score, pub_idx))
+            candidates_with_progress.append((proximity_score, progress, pub_idx))
 
-        # Return top candidates
-        scores.sort()
-        return [pub_idx for _, pub_idx in scores[:min(num_candidates, self.n_pubs)]]
+        # Sort by proximity first, then return candidates sorted by progress
+        candidates_with_progress.sort(key=lambda x: x[0])
+
+        # Take top candidates by proximity
+        top_candidates = candidates_with_progress[:min(num_candidates, self.n_pubs)]
+
+        # Sort those by progress along the path to avoid backtracking
+        top_candidates.sort(key=lambda x: x[1])
+
+        return [pub_idx for _, _, pub_idx in top_candidates]
 
     def precompute_endpoint_distances(self, start: Tuple[float, float], 
                                      end: Tuple[float, float], 
@@ -117,7 +124,7 @@ class PubCrawlPlanner:
                       k: int,
                       uniformity_weight: float) -> List:
         """Find best subset and route through candidates"""
-        if k <= 8:
+        if k <= 12:
             return self.sample_and_optimize(start, end, candidates, k,
                                            uniformity_weight, n_samples=1000)
         else:
@@ -134,8 +141,12 @@ class PubCrawlPlanner:
             # Random selection of k pubs
             selected = random.sample(candidates, k)
 
-            # Find best order with 2-opt
-            route = self.two_opt_with_fixed_endpoints(start, end, selected)
+            # Find best order with 2-opt, considering uniformity
+            route = self.two_opt_with_fixed_endpoints(start, end, selected, uniformity_weight)
+
+            # Enforce strict forward progress constraint - no backtracking allowed
+            if self.violates_forward_progress_constraint(start, end, route, threshold=0.05):
+                continue
 
             # Evaluate
             score = self.evaluate_route(route, uniformity_weight)
@@ -146,7 +157,7 @@ class PubCrawlPlanner:
 
         return best_route
 
-    def two_opt_with_fixed_endpoints(self, start, end, pub_ids):
+    def two_opt_with_fixed_endpoints(self, start, end, pub_ids, uniformity_weight=0):
         """2-opt TSP improvement with fixed start and end points"""
         # Start with nearest neighbor ordering
         route = self.nearest_neighbor_order(start, end, pub_ids)
@@ -161,10 +172,22 @@ class PubCrawlPlanner:
                     # Reverse segment between i and j
                     new_route = route[:i] + route[i:j+1][::-1] + route[j+1:]
 
-                    if self.route_distance(new_route) < self.route_distance(route):
-                        route = new_route
-                        improved = True
-                        break
+                    # Strictly enforce forward progress constraint
+                    # Use strict threshold (0.05) to prevent even small backtracking
+                    if self.violates_forward_progress_constraint(start, end, new_route, threshold=0.05):
+                        continue
+
+                    # Use evaluate_route if uniformity_weight > 0, otherwise just distance
+                    if uniformity_weight > 0:
+                        if self.evaluate_route(new_route, uniformity_weight) < self.evaluate_route(route, uniformity_weight):
+                            route = new_route
+                            improved = True
+                            break
+                    else:
+                        if self.route_distance(new_route) < self.route_distance(route):
+                            route = new_route
+                            improved = True
+                            break
 
                 if improved:
                     break
@@ -172,14 +195,24 @@ class PubCrawlPlanner:
         return route
 
     def nearest_neighbor_order(self, start, end, pub_ids):
-        """Greedy nearest neighbor starting from start"""
+        """Greedy nearest neighbor starting from start, biased toward forward progress"""
         route = ['start']
         remaining = set(pub_ids)
         current = 'start'
 
         while remaining:
-            # Find nearest unvisited pub
-            nearest = min(remaining, key=lambda p: self.get_distance(current, p))
+            # Find unvisited pub that minimizes: distance + penalty for backtracking
+            # Get current progress (0-1) if current is a pub, otherwise 0 for start
+            current_progress = self.project_onto_line(start, end, self.pub_coords[current]) if isinstance(current, int) else 0
+
+            def scoring_fn(p):
+                distance = self.get_distance(current, p)
+                # Penalty for moving backward along the path
+                pub_progress = self.project_onto_line(start, end, self.pub_coords[p])
+                backtrack_penalty = max(0, current_progress - pub_progress) * 5000  # Large penalty for backtracking
+                return distance + backtrack_penalty
+
+            nearest = min(remaining, key=scoring_fn)
             route.append(nearest)
             remaining.remove(nearest)
             current = nearest
@@ -188,25 +221,44 @@ class PubCrawlPlanner:
         return route
 
     def greedy_with_improvement(self, start, end, candidates, k, uniformity_weight):
-        """Greedy with look-ahead for larger k"""
+        """Greedy with forward-biased selection for larger k"""
         route = ['start']
         remaining = set(candidates)
 
         for _ in range(k):
             current = route[-1]
+            current_progress = self.project_onto_line(start, end, self.pub_coords[current]) if isinstance(current, int) else 0
 
-            # Pick pub that minimizes: distance_to_pub + estimated_distance_to_end
-            best_pub = min(remaining, key=lambda p: 
-                self.get_distance(current, p) + self.get_distance(p, 'end')
-            )
+            # Pick pub that minimizes: distance_to_pub + estimated_distance_to_end + backtrack_penalty
+            def scoring_fn(p):
+                distance = self.get_distance(current, p)
+                distance_to_end = self.get_distance(p, 'end')
+                pub_progress = self.project_onto_line(start, end, self.pub_coords[p])
+
+                # Strong penalty for backtracking - disqualify if regression > 5%
+                if current_progress - pub_progress > 0.05:
+                    return float('inf')
+
+                # Additional penalty for any backward movement
+                backtrack_penalty = max(0, current_progress - pub_progress) * 10000
+                return distance + distance_to_end + backtrack_penalty
+
+            best_pub = min(remaining, key=scoring_fn)
+
+            # Skip if no valid forward-moving pub found
+            if scoring_fn(best_pub) == float('inf'):
+                # Pick the best remaining even without forward progress guarantee
+                best_pub = min(remaining, key=lambda p:
+                    self.get_distance(current, p) + self.get_distance(p, 'end')
+                )
 
             route.append(best_pub)
             remaining.remove(best_pub)
 
         route.append('end')
 
-        # Apply 2-opt improvement
-        return self.two_opt_with_fixed_endpoints(start, end, route[1:-1])
+        # Apply 2-opt improvement with uniformity consideration
+        return self.two_opt_with_fixed_endpoints(start, end, route[1:-1], uniformity_weight)
 
     def evaluate_route(self, route, uniformity_weight):
         """Objective function: minimize total time + penalty for non-uniform spacing"""
@@ -217,7 +269,7 @@ class PubCrawlPlanner:
 
         total_distance = sum(segments)
 
-        # Uniformity penalty (standard deviation)
+        # Uniformity penalty (standard deviation of all segments including start and end)
         if len(segments) > 1:
             mean_dist = total_distance / len(segments)
             variance = sum((d - mean_dist) ** 2 for d in segments) / len(segments)
@@ -226,6 +278,35 @@ class PubCrawlPlanner:
             uniformity_penalty = 0
 
         return total_distance + uniformity_weight * uniformity_penalty * 100
+
+    def violates_forward_progress_constraint(self, start, end, route, threshold=0.1):
+        """Check if route has excessive backtracking along the corridor
+
+        Args:
+            start: Start coordinates
+            end: End coordinates
+            route: Route to check
+            threshold: Maximum allowed progress regression (0-1). Default 0.1 = 10%
+
+        Returns:
+            True if route violates forward progress constraint
+        """
+        # Extract pub indices from route
+        pub_sequence = [idx for idx in route if isinstance(idx, int)]
+
+        if len(pub_sequence) < 2:
+            return False
+
+        # Calculate progress values for each pub
+        progress_values = [self.project_onto_line(start, end, self.pub_coords[idx])
+                          for idx in pub_sequence]
+
+        # Check for backtracking exceeding threshold
+        for i in range(1, len(progress_values)):
+            if progress_values[i] < progress_values[i-1] - threshold:
+                return True
+
+        return False
 
     def get_distance(self, point_a, point_b):
         """Get walking distance between two points"""
