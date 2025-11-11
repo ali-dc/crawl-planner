@@ -60,6 +60,87 @@ body {
     overflow-y: auto;
 }
 
+.location-selection {
+    background: linear-gradient(135deg, #f9f9f9 0%, #f0f4ff 100%);
+    border: 1px solid #d4e0ff;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.location-step {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 0;
+}
+
+.step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: #e0e0e0;
+    border-radius: 50%;
+    font-weight: 600;
+    color: #666;
+    flex-shrink: 0;
+    font-size: 16px;
+    transition: all 0.3s;
+}
+
+.step-number.completed {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.step-content h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 6px;
+}
+
+.step-content p {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+
+.location-display {
+    padding: 10px 12px;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #666;
+    word-break: break-all;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.location-display.empty {
+    color: #999;
+    font-style: italic;
+    border-color: #e0e0e0;
+}
+
+.location-display:not(.empty) {
+    border-color: #667eea;
+    background: #f9fafb;
+    color: #333;
+}
+
+.divider {
+    height: 2px;
+    background: linear-gradient(to right, transparent, #d4e0ff, transparent);
+    margin: 15px 0;
+    opacity: 0.5;
+}
+
 .form-group {
     margin-bottom: 20px;
 }
@@ -70,53 +151,6 @@ body {
     font-weight: 500;
     margin-bottom: 8px;
     color: #333;
-}
-
-.location-input {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 12px;
-}
-
-.location-input input {
-    flex: 1;
-    padding: 10px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    font-size: 14px;
-}
-
-.location-input button {
-    padding: 10px 16px;
-    background: #f0f0f0;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: background 0.2s;
-}
-
-.location-input button:hover {
-    background: #e8e8e8;
-}
-
-.location-display {
-    padding: 10px;
-    background: #f9f9f9;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 13px;
-    color: #666;
-    word-break: break-all;
-    min-height: 40px;
-    display: flex;
-    align-items: center;
-}
-
-.location-display.empty {
-    color: #999;
-    font-style: italic;
 }
 
 input[type="number"] {

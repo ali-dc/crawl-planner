@@ -73,28 +73,65 @@ class PubCrawlPlanner:
     def select_candidate_pubs(self, start: Tuple[float, float],
                              end: Tuple[float, float],
                              num_candidates: int) -> List[int]:
-        """Select pubs roughly along corridor from start to end, sorted by progress"""
-        candidates_with_progress = []
+        """Select pubs roughly along corridor from start to end, sorted by progress
+
+        Strongly prioritizes pubs that are on or near the direct path from start to end.
+        Rejects pubs that are egregiously far outside the main corridor.
+        """
+        candidates_with_score = []
 
         for pub_idx in range(self.n_pubs):
             coords = self.pub_coords[pub_idx]
 
-            # Progress along start-end line (0 to 1)
-            progress = self.project_onto_line(start, end, coords)
+            # Get unclamped progress to detect pubs beyond the endpoint
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            px = coords[0] - start[0]
+            py = coords[1] - start[1]
+            line_length_sq = dx * dx + dy * dy
+            if line_length_sq > 0:
+                unclamped_progress = (px * dx + py * dy) / line_length_sq
+            else:
+                unclamped_progress = 0
+
+            # Progress along start-end line (0 to 1, clamped)
+            progress = max(0, min(1, unclamped_progress))
 
             # Perpendicular distance from line
             perp_dist = self.perpendicular_distance(start, end, coords)
 
-            # Score: prefer pubs along path, not too far to the side
-            proximity_score = perp_dist
+            # Hard reject pubs that are WAY off the path (e.g., perpendicular distance > 2km)
+            # This prevents selecting pubs in completely different areas
+            if perp_dist > 2000:  # 2km threshold
+                continue
 
-            candidates_with_progress.append((proximity_score, progress, pub_idx))
+            # CRITICAL: Reject pubs that are far BEYOND the endpoint
+            # If unclamped_progress > 1.3, the pub is 30% beyond the endpoint - reject it completely
+            if unclamped_progress > 1.3:
+                continue
 
-        # Sort by proximity first, then return candidates sorted by progress
-        candidates_with_progress.sort(key=lambda x: x[0])
+            # Strong rejection for pubs far outside the start-end corridor
+            progress_penalty = 0
+            if unclamped_progress < -0.2:  # More than 20% before start
+                progress_penalty = 500000
+            elif unclamped_progress > 1.2:  # More than 20% after end (catches extras before hard reject)
+                progress_penalty = 500000
+            elif unclamped_progress < 0:  # Slightly before start
+                progress_penalty = 100000
+            elif unclamped_progress > 1:  # Slightly after end
+                progress_penalty = 100000
 
-        # Take top candidates by proximity
-        top_candidates = candidates_with_progress[:min(num_candidates, self.n_pubs)]
+            # Score: perpendicular distance + progress penalty
+            # Pubs directly on the path get best scores
+            score = perp_dist + progress_penalty
+
+            candidates_with_score.append((score, progress, pub_idx))
+
+        # Sort by score (best = closest to path)
+        candidates_with_score.sort(key=lambda x: x[0])
+
+        # Take top candidates
+        top_candidates = candidates_with_score[:min(num_candidates, self.n_pubs)]
 
         # Sort those by progress along the path to avoid backtracking
         top_candidates.sort(key=lambda x: x[1])
@@ -144,8 +181,9 @@ class PubCrawlPlanner:
             # Find best order with 2-opt, considering uniformity
             route = self.two_opt_with_fixed_endpoints(start, end, selected, uniformity_weight)
 
-            # Enforce strict forward progress constraint - no backtracking allowed
-            if self.violates_forward_progress_constraint(start, end, route, threshold=0.05):
+            # Enforce forward progress constraint - prefer routes with minimal backtracking
+            # Use 10% threshold as a balanced compromise between flexibility and sanity
+            if self.violates_forward_progress_constraint(start, end, route, threshold=0.10):
                 continue
 
             # Evaluate
@@ -172,9 +210,9 @@ class PubCrawlPlanner:
                     # Reverse segment between i and j
                     new_route = route[:i] + route[i:j+1][::-1] + route[j+1:]
 
-                    # Strictly enforce forward progress constraint
-                    # Use strict threshold (0.05) to prevent even small backtracking
-                    if self.violates_forward_progress_constraint(start, end, new_route, threshold=0.05):
+                    # Use balanced forward progress constraint during 2-opt
+                    # Use 10% threshold to allow beneficial swaps without excessive backtracking
+                    if self.violates_forward_progress_constraint(start, end, new_route, threshold=0.10):
                         continue
 
                     # Use evaluate_route if uniformity_weight > 0, otherwise just distance
@@ -207,9 +245,10 @@ class PubCrawlPlanner:
 
             def scoring_fn(p):
                 distance = self.get_distance(current, p)
-                # Penalty for moving backward along the path
+                # Adaptive penalty for moving backward along the path
+                # Use lower penalty (3000) to allow more flexibility in sparse scenarios
                 pub_progress = self.project_onto_line(start, end, self.pub_coords[p])
-                backtrack_penalty = max(0, current_progress - pub_progress) * 5000  # Large penalty for backtracking
+                backtrack_penalty = max(0, current_progress - pub_progress) * 3000
                 return distance + backtrack_penalty
 
             nearest = min(remaining, key=scoring_fn)
@@ -235,12 +274,13 @@ class PubCrawlPlanner:
                 distance_to_end = self.get_distance(p, 'end')
                 pub_progress = self.project_onto_line(start, end, self.pub_coords[p])
 
-                # Strong penalty for backtracking - disqualify if regression > 5%
-                if current_progress - pub_progress > 0.05:
+                # Strict penalty for backtracking - allow up to 10% regression only
+                # This prevents selecting pubs that are going in the wrong direction
+                if current_progress - pub_progress > 0.10:
                     return float('inf')
 
-                # Additional penalty for any backward movement
-                backtrack_penalty = max(0, current_progress - pub_progress) * 10000
+                # Adaptive penalty for backward movement (lower than before)
+                backtrack_penalty = max(0, current_progress - pub_progress) * 5000
                 return distance + distance_to_end + backtrack_penalty
 
             best_pub = min(remaining, key=scoring_fn)

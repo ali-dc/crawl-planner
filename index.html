@@ -25,22 +25,24 @@
         <div class="error-message" id="errorMessage"></div>
         <div class="success-message" id="successMessage"></div>
 
-        <div class="form-group">
-          <label>Starting Location</label>
-          <div class="location-input">
-            <input type="text" id="startLocationInput" placeholder="Click on map or enter coordinates" readonly>
-            <button onclick="selectStartLocation()" title="Click map to select">📍</button>
+        <div class="location-selection" id="locationSelection">
+          <div class="location-step">
+            <div class="step-number" id="startStepNumber">1</div>
+            <div class="step-content">
+              <h3>Select Start Location</h3>
+              <p>Click on the map to choose where your pub crawl begins</p>
+              <div class="location-display empty" id="startDisplay">Click on map...</div>
+            </div>
           </div>
-          <div class="location-display empty" id="startDisplay">Click the map to select a start location</div>
-        </div>
-
-        <div class="form-group">
-          <label>Ending Location</label>
-          <div class="location-input">
-            <input type="text" id="endLocationInput" placeholder="Click on map or enter coordinates" readonly>
-            <button onclick="selectEndLocation()" title="Click map to select">📍</button>
+          <div class="divider"></div>
+          <div class="location-step">
+            <div class="step-number" id="endStepNumber">2</div>
+            <div class="step-content">
+              <h3>Select End Location</h3>
+              <p>Click on the map to choose where your pub crawl ends</p>
+              <div class="location-display empty" id="endDisplay">Click on map...</div>
+            </div>
           </div>
-          <div class="location-display empty" id="endDisplay">Click the map to select an end location</div>
         </div>
 
         <div class="form-group">
@@ -50,8 +52,7 @@
         </div>
 
         <div class="info-box">
-          <strong>How to use:</strong> Select start & end points on the map, choose the number of pubs, then click "Plan
-          Crawl".
+          <strong>How to use:</strong> Click on the map to select your start and end locations, choose the number of pubs, then click "Plan Crawl".
         </div>
 
         <div class="button-group">
@@ -77,14 +78,6 @@
             </div>
           </div>
           <div class="pubs-list" id="pubsList"></div>
-
-          <div class="directions-section">
-            <h4>🗺️ Directions</h4>
-            <div class="directions-container" id="directionsContainer" style="display: none;">
-              <div class="directions-list" id="directionsList"></div>
-            </div>
-            <button class="btn-directions" onclick="toggleDirections()" id="directionsToggle">Show Directions</button>
-          </div>
         </div>
       </div>
     </div>
