@@ -1,0 +1,16 @@
+FROM nginx:latest
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy static files
+COPY index.html /app/
+COPY styles.css /app/
+COPY app.js /app/
+
+# Expose port
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1

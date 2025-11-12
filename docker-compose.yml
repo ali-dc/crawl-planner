@@ -44,5 +44,27 @@ services:
       start_period: 15s
     command: sh -c "python app.py & sleep 2 && sh /init-precompute.sh && wait"
 
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    container_name: crawl-planner-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - app
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./index.html:/app/index.html
+      - ./styles.css:/app/styles.css
+      - ./app.js:/app/app.js
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
 volumes:
   app-data:
