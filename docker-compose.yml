@@ -6,9 +6,6 @@ services:
     container_name: osrm-builder
     volumes:
       - ./osrm-data:/data
-      - ./osrm-profiles:/profiles
-      - ./download_map.sh:/download_map.sh
-    command: sh /download_map.sh
     profiles:
       - build
 
