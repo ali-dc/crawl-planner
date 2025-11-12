@@ -7,7 +7,7 @@ services:
       - ./osrm-profiles:/profiles
     command: [
       "sh", "-c",
-      "if [ ! -f /data/bristol-latest.osm.pbf ]; then echo 'Downloading map data...' && cd /data && wget https://download.geofabrik.de/europe/bristol-latest.osm.pbf && cd /; fi && if [ ! -f /data/bristol-latest.osrm ]; then echo 'Building OSRM data with custom foot profile...' && osrm-extract -p /profiles/foot.lua /data/bristol-latest.osm.pbf && osrm-partition /data/bristol-latest.osrm && osrm-customize /data/bristol-latest.osrm && echo 'OSRM data build complete'; else echo 'OSRM data already exists'; fi"
+      "if [ ! -f /data/bristol-latest.osm.pbf ]; then echo 'Downloading map data...' && apt-get update && apt-get install -y wget && cd /data && wget https://download.geofabrik.de/europe/bristol-latest.osm.pbf && cd /; fi && if [ ! -f /data/bristol-latest.osrm ]; then echo 'Building OSRM data with custom foot profile...' && osrm-extract -p /profiles/foot.lua /data/bristol-latest.osm.pbf && osrm-partition /data/bristol-latest.osrm && osrm-customize /data/bristol-latest.osrm && echo 'OSRM data build complete'; else echo 'OSRM data already exists'; fi"
     ]
     profiles:
       - build
