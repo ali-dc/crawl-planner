@@ -31,12 +31,32 @@ if [ $? -eq 0 ]; then
   echo -e "${GREEN}SSL certificate obtained successfully!${NC}"
   echo -e "${GREEN}Certificate path: /etc/letsencrypt/live/$DOMAIN_NAME/${NC}"
 
-  # Reload nginx with SSL config
-  echo -e "${YELLOW}Reloading nginx with SSL configuration...${NC}"
-  nginx -s reload
+  # Switch to HTTPS nginx config
+  echo -e "${YELLOW}Switching nginx to HTTPS configuration...${NC}"
+  cp /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf.http.bak
 
-  echo -e "${GREEN}Setup complete! Your site is now accessible at https://$DOMAIN_NAME${NC}"
-  echo -e "${GREEN}Certificate auto-renewal is enabled${NC}"
+  # Replace with HTTPS config - need to read it from the app volume
+  if [ -f /app/nginx-https.conf ]; then
+    cp /app/nginx-https.conf /etc/nginx/conf.d/default.conf
+    echo -e "${GREEN}Switched to HTTPS nginx configuration${NC}"
+  else
+    echo -e "${YELLOW}Note: nginx-https.conf not found. Please manually update nginx config.${NC}"
+  fi
+
+  # Test nginx config
+  nginx -t
+  if [ $? -eq 0 ]; then
+    # Reload nginx with SSL config
+    echo -e "${YELLOW}Reloading nginx with SSL configuration...${NC}"
+    nginx -s reload
+    echo -e "${GREEN}Setup complete! Your site is now accessible at https://$DOMAIN_NAME${NC}"
+    echo -e "${GREEN}Certificate auto-renewal is enabled${NC}"
+  else
+    echo -e "${RED}Error in nginx configuration. Reverting...${NC}"
+    cp /etc/nginx/conf.d/default.conf.http.bak /etc/nginx/conf.d/default.conf
+    nginx -s reload
+    exit 1
+  fi
 else
   echo -e "${RED}Error obtaining certificate. Please check your domain configuration.${NC}"
   echo -e "${YELLOW}Make sure your domain is pointing to this server's IP address.${NC}"
