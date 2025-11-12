@@ -21,3 +21,26 @@ services:
     volumes:
       - ./osrm-data:/data
     restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crawl-planner-app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - osrm
+    environment:
+      OSRM_URL: http://osrm:5005
+    volumes:
+      - ./data.json:/app/data.json
+      - ./pub_distances.pkl:/app/pub_distances.pkl
+      - ./raw.data:/app/raw.data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import requests; requests.get('http://localhost:8000/health', timeout=5)\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

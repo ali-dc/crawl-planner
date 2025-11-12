@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+.env
+__pycache__
+.mypy_cache
+.pytest_cache
+*.pyc
+*.pyo
+*.egg-info
+.DS_Store
+osrm-data
+osrm-profiles
+static
+.github
+README.md
