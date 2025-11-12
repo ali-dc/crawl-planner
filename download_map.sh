@@ -7,7 +7,7 @@ cd osrm-data
 # Download map data (change URL for your region)
 # Find your region at: https://download.geofabrik.de/
 echo "Downloading map data..."
-wget https://download.geofabrik.de/europe/bristol-latest.osm.pbf
+wget https://download.geofabrik.de/europe/united-kingdom/england/bristol-latest.osm.pbf
 
 # Extract (using foot profile for walking)
 echo "Extracting map data (this may take 10-60 minutes)..."
