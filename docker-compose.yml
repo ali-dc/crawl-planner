@@ -34,6 +34,7 @@ services:
       - ./data.json:/app/data.json
       - ./pub_distances.pkl:/app/pub_distances.pkl
       - ./raw.data:/app/raw.data
+      - ./init-precompute.sh:/init-precompute.sh
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import requests; requests.get('http://localhost:8000/health', timeout=5)\" || exit 1"]
@@ -41,3 +42,4 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+    command: sh -c "python app.py & sleep 2 && sh /init-precompute.sh && wait"
