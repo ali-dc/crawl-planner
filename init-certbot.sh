@@ -22,7 +22,6 @@ certbot certonly \
   --webroot \
   -w /var/www/certbot \
   -d $DOMAIN_NAME \
-  -d www.$DOMAIN_NAME \
   --non-interactive \
   --agree-tos \
   --email $EMAIL
