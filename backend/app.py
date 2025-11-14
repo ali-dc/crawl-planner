@@ -93,14 +93,20 @@ class PubCrawlPlannerApp:
         self.app.post("/parse", response_model=dict)(self.parse_raw_data)
         self.app.get("/status", response_model=PrecomputeStatusResponse)(self.get_status)
 
-        # Serve static files
-        self.app.get("/")(self.serve_index)
-        self.app.get("/styles.css")(self.serve_styles)
-        self.app.get("/app.js")(self.serve_app_js)
-
-        # Mount static files directory
-        if os.path.isdir("static"):
-            self.app.mount("/static", StaticFiles(directory="static"), name="static")
+        # Serve Vite dist folder if it exists
+        dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+        if os.path.isdir(dist_path):
+            self.app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
+            self.app.get("/")(self.serve_vite_index)
+            self.app.get("/{full_path:path}")(self.serve_vite_file)
+        else:
+            # Fallback for development: serve old static files
+            self.app.get("/")(self.serve_index)
+            self.app.get("/styles.css")(self.serve_styles)
+            self.app.get("/app.js")(self.serve_app_js)
+            # Mount static files directory
+            if os.path.isdir("static"):
+                self.app.mount("/static", StaticFiles(directory="static"), name="static")
 
     @asynccontextmanager
     async def _lifespan(self, app: FastAPI):
@@ -177,6 +183,23 @@ class PubCrawlPlannerApp:
         """Serve the app.js file"""
         return FileResponse("app.js", media_type="text/javascript")
 
+    async def serve_vite_index(self) -> FileResponse:
+        """Serve the Vite-built index.html file"""
+        dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+        return FileResponse(os.path.join(dist_path, "index.html"), media_type="text/html")
+
+    async def serve_vite_file(self, full_path: str) -> FileResponse:
+        """Serve Vite-built static files or index.html for SPA routing"""
+        dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+        file_path = os.path.join(dist_path, full_path)
+
+        # Check if file exists
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+
+        # Return index.html for SPA routing (all non-file paths go to index.html)
+        return FileResponse(os.path.join(dist_path, "index.html"), media_type="text/html")
+
     async def health_check(self) -> HealthResponse:
         """Check API and OSRM server health"""
         return HealthResponse(
@@ -198,15 +221,12 @@ class PubCrawlPlannerApp:
                 return pub
         raise HTTPException(status_code=404, detail=f"Pub {pub_id} not found")
 
-    async def plan_crawl(
-        self, request: PlanCrawlRequest, include_directions: bool = Query(False)
-    ) -> PlanCrawlResponse:
+    async def plan_crawl(self, request: PlanCrawlRequest) -> PlanCrawlResponse:
         """
         Plan an optimal pub crawl route
 
         Args:
-            request: Planning parameters (start, end, num_pubs, uniformity_weight)
-            include_directions: If true, include turn-by-turn directions
+            request: Planning parameters (start, end, num_pubs, uniformity_weight, include_directions)
 
         Returns:
             Optimized route with pub details and navigation information
@@ -243,12 +263,22 @@ class PubCrawlPlannerApp:
 
             # Get directions if requested
             legs = None
-            if include_directions:
-                legs = self.get_route_legs(
-                    result["route"],
-                    request.start_point.tuple,
-                    request.end_point.tuple,
-                )
+            print(f"include_directions: {request.include_directions}")
+            if request.include_directions:
+                print(f"Fetching directions for route: {result['route']}")
+                try:
+                    legs = self.get_route_legs(
+                        result["route"],
+                        request.start_point.tuple,
+                        request.end_point.tuple,
+                    )
+                    print(f"Successfully fetched {len(legs)} legs")
+                except Exception as e:
+                    print(f"Warning: Failed to get directions: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue without directions rather than failing completely
+                    legs = None
 
             return PlanCrawlResponse(
                 route_indices=result["route"],
@@ -304,6 +334,9 @@ class PubCrawlPlannerApp:
         Returns:
             List of RouteLegModel objects
         """
+        if self.osrm_client is None:
+            raise Exception("OSRM client not initialized")
+
         legs = []
 
         for i in range(len(route_indices) - 1):
@@ -333,7 +366,10 @@ class PubCrawlPlannerApp:
 
             # Get directions from OSRM
             try:
+                print(f"Fetching directions from {from_coords} to {to_coords}")
                 directions = self.osrm_client.get_directions(from_coords, to_coords)
+                print(f"Got directions: distance={directions['distance']}, duration={directions['duration']}")
+                print(f"Geometry type: {type(directions['geometry'])}")
                 leg = RouteLegModel(
                     from_index=i,
                     to_index=i + 1,
@@ -342,20 +378,12 @@ class PubCrawlPlannerApp:
                     steps=directions["steps"],
                     geometry=directions["geometry"],
                 )
+                print(f"Created leg {i}: {leg}")
+                legs.append(leg)
             except Exception as e:
                 # Log the error for debugging
                 print(f"Error fetching directions from {from_coords} to {to_coords}: {e}")
-                # Fallback if OSRM fails
-                leg = RouteLegModel(
-                    from_index=i,
-                    to_index=i + 1,
-                    distance_meters=0,
-                    duration_seconds=0,
-                    steps=[],
-                    geometry=None,
-                )
-
-            legs.append(leg)
+                raise  # Re-raise to let caller handle
 
         return legs
 

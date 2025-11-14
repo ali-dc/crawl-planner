@@ -1,3 +1,21 @@
+# Build stage for frontend
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+# Copy frontend files
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/src ./src
+COPY frontend/index.html ./
+COPY frontend/vite.config.js ./
+COPY frontend/.eslintrc.cjs ./
+
+# Build the frontend
+RUN npm run build
+
+# Python app stage
 FROM python:3.14-slim
 COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /uvx /bin/
 
@@ -6,24 +24,23 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
-#
-# Copy pyproject.toml and install Python dependencies
-COPY pyproject.toml .
-COPY uv.lock .
+
+# Copy backend pyproject.toml and install Python dependencies
+COPY backend/pyproject.toml .
+COPY backend/uv.lock .
 
 RUN uv sync --locked
 
-# Copy application code
-COPY app.py .
-COPY planner.py .
-COPY osrm_client.py .
-COPY api_schemas.py .
-COPY parse.py .
-COPY precompute_distances.py .
+# Copy backend application code
+COPY backend/app.py .
+COPY backend/planner.py .
+COPY backend/osrm_client.py .
+COPY backend/api_schemas.py .
+COPY backend/parse.py .
+COPY backend/precompute_distances.py .
 
-COPY index.html .
-COPY styles.css .
-COPY app.js .
+# Copy built frontend from builder stage
+COPY --from=frontend-builder /frontend/dist ./frontend/dist
 
 EXPOSE 8000
 

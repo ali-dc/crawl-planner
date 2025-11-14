@@ -41,6 +41,9 @@ class PlanCrawlRequest(BaseModel):
     uniformity_weight: float = Field(
         default=0.2, ge=0, le=1, description="Higher = more uniform spacing"
     )
+    include_directions: bool = Field(
+        default=True, description="Include turn-by-turn directions in response"
+    )
 
 
 class PubInRoute(BaseModel):

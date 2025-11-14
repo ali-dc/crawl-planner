@@ -29,8 +29,8 @@ services:
     environment:
       OSRM_URL: http://osrm:5005
     volumes:
-      - ./data.json:/app/data.json
-      - ./raw.data:/app/raw.data
+      - ./backend/data.json:/app/data.json
+      - ./backend/raw.data:/app/raw.data
       - ./init-precompute.sh:/init-precompute.sh
       - app-data:/app
     restart: unless-stopped
@@ -59,9 +59,6 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
       - ./nginx-https.conf:/app/nginx-https.conf
-      - ./index.html:/app/index.html
-      - ./styles.css:/app/styles.css
-      - ./app.js:/app/app.js
       - ./letsencrypt:/etc/letsencrypt
       - ./certbot-www:/var/www/certbot
       - ./init-certbot.sh:/init-certbot.sh
