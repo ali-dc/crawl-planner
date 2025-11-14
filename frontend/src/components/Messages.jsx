@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Snackbar, Alert } from '@mui/material'
 
 const Messages = ({ message, type }) => {
   const [visible, setVisible] = useState(false)
@@ -13,12 +14,25 @@ const Messages = ({ message, type }) => {
     }
   }, [message, type])
 
-  if (!visible || !message) return null
-
-  const className = type === 'error' ? 'error-message' : 'success-message'
+  const handleClose = () => {
+    setVisible(false)
+  }
 
   return (
-    <div className={`${className} show`}>{message}</div>
+    <Snackbar
+      open={visible && !!message}
+      autoHideDuration={type === 'success' ? 3000 : null}
+      onClose={handleClose}
+      anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+    >
+      <Alert
+        onClose={handleClose}
+        severity={type === 'error' ? 'error' : 'success'}
+        sx={{ width: '100%' }}
+      >
+        {message}
+      </Alert>
+    </Snackbar>
   )
 }
 

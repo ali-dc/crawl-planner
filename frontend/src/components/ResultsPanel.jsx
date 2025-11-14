@@ -1,42 +1,100 @@
 import React, { useState, useEffect } from 'react'
+import {
+  Box,
+  Card,
+  CardContent,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Paper,
+  Typography,
+  useMediaQuery,
+  useTheme,
+  Divider,
+} from '@mui/material'
+import LocationOnIcon from '@mui/icons-material/LocationOn'
+import TimerIcon from '@mui/icons-material/Timer'
+import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk'
 
 const RouteStats = ({ distance, time }) => (
-  <div className="route-stats">
-    <div className="stat-card">
-      <div className="stat-value">{distance} km</div>
-      <div className="stat-label">Distance</div>
-    </div>
-    <div className="stat-card">
-      <div className="stat-value">{time} min</div>
-      <div className="stat-label">Est. Time</div>
-    </div>
-  </div>
+  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
+    <Card>
+      <CardContent sx={{ textAlign: 'center' }}>
+        <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
+          {distance} km
+        </Typography>
+        <Typography variant="body2" color="textSecondary">
+          Distance
+        </Typography>
+      </CardContent>
+    </Card>
+    <Card>
+      <CardContent sx={{ textAlign: 'center' }}>
+        <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>
+          {time} min
+        </Typography>
+        <Typography variant="body2" color="textSecondary">
+          Est. Time
+        </Typography>
+      </CardContent>
+    </Card>
+  </Box>
 )
 
 const PubsList = ({ route }) => (
-  <div className="pubs-list">
+  <List sx={{ width: '100%' }}>
     {route.pubs.map((pub, index) => {
       let legInfo = ''
-      if (route.legs && route.legs[index + 1]) {
-        const leg = route.legs[index + 1]
+      // Show the distance/time FROM start TO this pub (leg at index) or FROM previous pub TO this pub
+      if (route.legs && route.legs[index]) {
+        const leg = route.legs[index]
         const legDistance = (leg.distance_meters / 1000).toFixed(2)
         const legTime = Math.round(leg.duration_seconds / 60)
         legInfo = `${legDistance} km • ${legTime} min`
       }
 
       return (
-        <div key={index} className="pub-item">
-          <div style={{ display: 'flex', alignItems: 'start', gap: '10px' }}>
-            <div className="pub-number">{index + 1}</div>
-            <div style={{ flex: 1 }}>
-              <div className="pub-name">{pub.pub_name}</div>
-              {legInfo && <div className="leg-info">{legInfo}</div>}
-            </div>
-          </div>
-        </div>
+        <React.Fragment key={index}>
+          <ListItem
+            sx={{
+              py: 2,
+              '&:hover': {
+                backgroundColor: 'action.hover',
+              },
+            }}
+          >
+            <ListItemIcon>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  backgroundColor: 'primary.main',
+                  color: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  fontSize: '0.875rem',
+                }}
+              >
+                {index + 1}
+              </Box>
+            </ListItemIcon>
+            <ListItemText
+              primary={pub.pub_name}
+              secondary={legInfo || undefined}
+              primaryTypographyProps={{ variant: 'body1', fontWeight: 500 }}
+              secondaryTypographyProps={{ variant: 'caption' }}
+            />
+          </ListItem>
+          {index < route.pubs.length - 1 && <Divider />}
+        </React.Fragment>
       )
     })}
-  </div>
+  </List>
 )
 
 const DesktopResults = ({ route, visible }) => {
@@ -46,73 +104,85 @@ const DesktopResults = ({ route, visible }) => {
   const time = Math.round(route.estimated_time_minutes)
 
   return (
-    <div className="sidebar">
-      <div className="sidebar-content">
-        <div className="results-section">
-          <h3>📍 Your Route</h3>
-          <RouteStats distance={distance} time={time} />
-          <PubsList route={route} />
-        </div>
-      </div>
-    </div>
+    <Paper
+      sx={{
+        position: 'absolute',
+        top: 64,
+        right: 0,
+        width: 400,
+        height: 'calc(100% - 64px)',
+        boxSizing: 'border-box',
+        overflowY: 'auto',
+        zIndex: 1200,
+        borderRadius: 0,
+        boxShadow: '-2px 0px 8px rgba(0, 0, 0, 0.15)',
+      }}
+    >
+      <Box sx={{ p: 3, height: '100%', overflowY: 'auto' }}>
+        <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <LocationOnIcon color="primary" />
+          Your Route
+        </Typography>
+        <RouteStats distance={distance} time={time} />
+        <PubsList route={route} />
+      </Box>
+    </Paper>
   )
 }
 
 const MobileResults = ({ route, visible }) => {
-  const [isMinimized, setIsMinimized] = useState(false)
+  const [isOpen, setIsOpen] = useState(true)
 
   if (!visible || !route) return null
 
   const distance = (route.total_distance_meters / 1000).toFixed(2)
   const time = Math.round(route.estimated_time_minutes)
 
-  const handleMinimize = () => {
-    setIsMinimized(!isMinimized)
-  }
-
   return (
-    <div className={`bottom-sheet active ${isMinimized ? 'minimized' : ''}`}>
-      <div className="bottom-sheet-header">
-        <div className="bottom-sheet-handle"></div>
-        {isMinimized && (
-          <div style={{ flex: 1, textAlign: 'center', marginRight: '8px' }}>
-            <span style={{ fontSize: '14px', fontWeight: '600', color: '#333' }}>
-              📍 {distance} km • {time} min
-            </span>
-          </div>
-        )}
-        <button
-          className="btn-close-sheet"
-          onClick={handleMinimize}
-          title={isMinimized ? 'Expand' : 'Minimize'}
-        >
-          {isMinimized ? '▲' : '▼'}
-        </button>
-      </div>
-      {!isMinimized && (
-        <div className="bottom-sheet-content">
-          <div className="results-section">
-            <h3>📍 Your Route</h3>
-            <RouteStats distance={distance} time={time} />
-            <PubsList route={route} />
-          </div>
-        </div>
-      )}
-    </div>
+    <Drawer
+      anchor="bottom"
+      open={isOpen}
+      onClose={() => setIsOpen(false)}
+      sx={{
+        '& .MuiDrawer-paper': {
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+        },
+      }}
+    >
+      <Box
+        sx={{
+          p: 2,
+          maxHeight: '80vh',
+          overflowY: 'auto',
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+          <Box
+            sx={{
+              width: 40,
+              height: 4,
+              backgroundColor: 'divider',
+              borderRadius: 2,
+            }}
+          />
+        </Box>
+
+        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <LocationOnIcon color="primary" />
+          Your Route
+        </Typography>
+
+        <RouteStats distance={distance} time={time} />
+        <PubsList route={route} />
+      </Box>
+    </Drawer>
   )
 }
 
 const ResultsPanel = ({ route, visible, onClose }) => {
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768)
-
-  useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth <= 768)
-    }
-
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
   if (!visible || !route) return null
 

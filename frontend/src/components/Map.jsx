@@ -20,6 +20,7 @@ const Map = ({
   const startMarkerRef = useRef(null)
   const endMarkerRef = useRef(null)
   const pubMarkersRef = useRef([])
+  const popupRef = useRef(null)
 
   // Initialize map
   useEffect(() => {
@@ -43,6 +44,14 @@ const Map = ({
       onMapClick([lng, lat])
     })
 
+    // Close popup when clicking on map background (after markers)
+    map.current.on('click', () => {
+      if (popupRef.current) {
+        popupRef.current.remove()
+        popupRef.current = null
+      }
+    })
+
     return () => {
       if (map.current) {
         // Don't destroy the map on cleanup, just remove event listeners
@@ -51,7 +60,7 @@ const Map = ({
     }
   }, [onMapClick])
 
-  // Manage markers
+  // Manage start/end markers
   useEffect(() => {
     if (!map.current || !isMapReady) return
 
@@ -61,11 +70,37 @@ const Map = ({
       startMarkerRef.current = null
     }
 
+    // Add start point marker if it exists
+    if (startPoint) {
+      const startEl = createStartMarkerElement()
+      startMarkerRef.current = new maplibregl.Marker({ element: startEl })
+        .setLngLat(startPoint)
+        .addTo(map.current)
+    }
+  }, [startPoint, isMapReady])
+
+  // Manage end marker
+  useEffect(() => {
+    if (!map.current || !isMapReady) return
+
     // Remove old end marker
     if (endMarkerRef.current) {
       endMarkerRef.current.remove()
       endMarkerRef.current = null
     }
+
+    // Add end point marker if it exists
+    if (endPoint) {
+      const endEl = createEndMarkerElement()
+      endMarkerRef.current = new maplibregl.Marker({ element: endEl })
+        .setLngLat(endPoint)
+        .addTo(map.current)
+    }
+  }, [endPoint, isMapReady])
+
+  // Manage pub markers - only recreate when route changes
+  useEffect(() => {
+    if (!map.current || !isMapReady) return
 
     // Remove old pub markers
     pubMarkersRef.current.forEach((marker) => {
@@ -77,26 +112,11 @@ const Map = ({
     })
     pubMarkersRef.current = []
 
-    // Add start point marker if it exists
-    if (startPoint) {
-      const startEl = createStartMarkerElement()
-      startMarkerRef.current = new maplibregl.Marker({ element: startEl })
-        .setLngLat(startPoint)
-        .addTo(map.current)
-    }
-
-    // Add end point marker if it exists
-    if (endPoint) {
-      const endEl = createEndMarkerElement()
-      endMarkerRef.current = new maplibregl.Marker({ element: endEl })
-        .setLngLat(endPoint)
-        .addTo(map.current)
-    }
-
     // Add pub markers if route exists
     if (route && route.pubs) {
       route.pubs.forEach((pub, index) => {
         const pubEl = document.createElement('div')
+        pubEl.className = `pub-marker-${pub.id}`
         pubEl.style.cssText = `
           width: 32px;
           height: 32px;
@@ -112,13 +132,39 @@ const Map = ({
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         `
         pubEl.textContent = index + 1
+
+        pubEl.addEventListener('click', (e) => {
+          e.stopPropagation()
+
+          // Close existing popup if clicking a different pub
+          if (popupRef.current) {
+            popupRef.current.remove()
+            popupRef.current = null
+          }
+
+          // Create and show popup
+          const popupContent = document.createElement('div')
+          popupContent.style.cssText = `
+            padding: 8px 12px;
+            font-size: 14px;
+            font-weight: 500;
+            white-space: nowrap;
+          `
+          popupContent.textContent = pub.pub_name
+
+          popupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false })
+            .setLngLat([pub.longitude, pub.latitude])
+            .setDOMContent(popupContent)
+            .addTo(map.current)
+        })
+
         const pubMarker = new maplibregl.Marker({ element: pubEl })
           .setLngLat([pub.longitude, pub.latitude])
           .addTo(map.current)
         pubMarkersRef.current.push(pubMarker)
       })
     }
-  }, [route, isMapReady, startPoint, endPoint])
+  }, [route, isMapReady])
 
   // Clear route visualization
   useEffect(() => {
@@ -179,7 +225,7 @@ const Map = ({
         }
       })
 
-      // Fit bounds to all points
+      // Fit bounds to all points, accounting for the sidebar on the right
       const bounds = new maplibregl.LngLatBounds()
       if (startPoint) bounds.extend(startPoint)
       if (endPoint) bounds.extend(endPoint)
@@ -188,9 +234,10 @@ const Map = ({
           bounds.extend([pub.longitude, pub.latitude])
         })
       }
-      map.current.fitBounds(bounds, { padding: 50 })
+      // Use padding with extra space on the right for the 400px sidebar
+      map.current.fitBounds(bounds, { padding: { top: 50, bottom: 50, left: 50, right: 450 } })
     }
-  }, [route, isMapReady, startPoint, endPoint])
+  }, [route, isMapReady])
 
   return (
     <div

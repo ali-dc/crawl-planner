@@ -1,4 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { ThemeProvider } from '@mui/material/styles'
+import { CssBaseline, Box } from '@mui/material'
 import Map from './components/Map'
 import Header from './components/Header'
 import BottomBar from './components/BottomBar'
@@ -7,6 +9,7 @@ import Messages from './components/Messages'
 import Loading from './components/Loading'
 import { usePlanState } from './hooks/usePlanState'
 import { apiClient } from './services/api'
+import theme from './theme'
 
 function App() {
   const {
@@ -48,7 +51,6 @@ function App() {
     }
   }, [])
 
-
   const showMessage = (msg, type) => {
     setMessage(msg)
     setMessageType(type)
@@ -86,62 +88,72 @@ function App() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%' }}>
-      <Header startPoint={state.startPoint} endPoint={state.endPoint} />
-
-      <div
-        style={{
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box
+        sx={{
           display: 'flex',
-          flex: 1,
-          gap: 0,
-          minHeight: 0,
-          minWidth: 0,
+          flexDirection: 'column',
+          height: '100vh',
           width: '100%',
         }}
-        className="container"
       >
-        <div
-          style={{
+        <Header startPoint={state.startPoint} endPoint={state.endPoint} />
+
+        <Box
+          sx={{
+            display: 'flex',
             flex: 1,
-            position: 'relative',
-            background: '#e0e0e0',
+            gap: 0,
             minHeight: 0,
             minWidth: 0,
             width: '100%',
+            overflow: 'visible',
+            position: 'relative',
           }}
-          className="map-container"
         >
-          <Map
-            startPoint={state.startPoint}
-            endPoint={state.endPoint}
+          <Box
+            sx={{
+              flex: 1,
+              position: 'relative',
+              backgroundColor: '#e0e0e0',
+              minHeight: 0,
+              minWidth: 0,
+              overflow: 'hidden',
+            }}
+          >
+            <Map
+              startPoint={state.startPoint}
+              endPoint={state.endPoint}
+              route={state.route}
+              onMapClick={handleMapClick}
+              numPubs={state.numPubs}
+              selectingStart={state.selectingStart}
+              selectingEnd={state.selectingEnd}
+            />
+          </Box>
+
+          <ResultsPanel
             route={state.route}
-            onMapClick={handleMapClick}
-            numPubs={state.numPubs}
-            selectingStart={state.selectingStart}
-            selectingEnd={state.selectingEnd}
+            visible={state.route !== null}
+            onClose={handleClear}
           />
-        </div>
+        </Box>
 
-        <ResultsPanel
-          route={state.route}
-          visible={state.route !== null}
-          onClose={handleClear}
+        <BottomBar
+          startPoint={state.startPoint}
+          endPoint={state.endPoint}
+          numPubs={state.numPubs}
+          onNumPubsChange={setNumPubs}
+          onPlan={handlePlan}
+          onClear={handleClear}
+          loading={loading}
         />
-      </div>
 
-      <BottomBar
-        startPoint={state.startPoint}
-        endPoint={state.endPoint}
-        numPubs={state.numPubs}
-        onNumPubsChange={setNumPubs}
-        onPlan={handlePlan}
-        onClear={handleClear}
-        loading={loading}
-      />
-
-      <Messages message={message} type={messageType} />
-      <Loading loading={loading} />
-    </div>
+        <Messages message={message} type={messageType} />
+        <Loading loading={loading} />
+      </Box>
+    </ThemeProvider>
   )
 }
 
