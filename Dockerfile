@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml .
 COPY uv.lock .
 
+RUN uv sync --locked
+
 # Copy application code
 COPY app.py .
 COPY planner.py .
@@ -18,11 +20,10 @@ COPY osrm_client.py .
 COPY api_schemas.py .
 COPY parse.py .
 COPY precompute_distances.py .
+
 COPY index.html .
 COPY styles.css .
 COPY app.js .
-
-RUN uv sync --locked
 
 EXPOSE 8000
 

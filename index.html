@@ -10,55 +10,22 @@
 </head>
 
 <body>
+  <!-- Always visible header -->
+  <div class="sidebar-header">
+    <h1>🍺 Pub Crawl</h1>
+    <div id="barStatus">Select a start point</div>
+  </div>
+
   <div class="container">
     <div class="map-container">
       <div id="map"></div>
     </div>
 
-    <div class="sidebar">
-      <div class="sidebar-header">
-        <h1>🍺 Pub Crawl</h1>
-        <p>Plan your perfect route</p>
-      </div>
-
+    <!-- Desktop Sidebar -->
+    <div class="sidebar" id="sidebar">
       <div class="sidebar-content">
         <div class="error-message" id="errorMessage"></div>
         <div class="success-message" id="successMessage"></div>
-
-        <div class="location-selection" id="locationSelection">
-          <div class="location-step">
-            <div class="step-number" id="startStepNumber">1</div>
-            <div class="step-content">
-              <h3>Select Start Location</h3>
-              <p>Click on the map to choose where your pub crawl begins</p>
-              <div class="location-display empty" id="startDisplay">Click on map...</div>
-            </div>
-          </div>
-          <div class="divider"></div>
-          <div class="location-step">
-            <div class="step-number" id="endStepNumber">2</div>
-            <div class="step-content">
-              <h3>Select End Location</h3>
-              <p>Click on the map to choose where your pub crawl ends</p>
-              <div class="location-display empty" id="endDisplay">Click on map...</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="numPubs">Number of Pubs: <strong id="pubCount">5</strong></label>
-          <input type="number" id="numPubs" min="1" max="20" value="5" onchange="updatePubCount()">
-          <small style="color: #999;">Recommended: 4-10 pubs</small>
-        </div>
-
-        <div class="info-box">
-          <strong>How to use:</strong> Click on the map to select your start and end locations, choose the number of pubs, then click "Plan Crawl".
-        </div>
-
-        <div class="button-group">
-          <button class="btn-secondary" onclick="clearForm()">Clear</button>
-          <button class="btn-primary" id="planButton" onclick="planCrawl()" disabled>Plan Crawl</button>
-        </div>
 
         <div class="loading" id="loading">
           <div class="spinner"></div>
@@ -78,6 +45,44 @@
             </div>
           </div>
           <div class="pubs-list" id="pubsList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Bottom Bar -->
+    <div class="mobile-bottom-bar">
+      <div class="bar-controls">
+        <input type="number" id="numPubsMobile" class="pubs-input" min="1" max="20" value="5">
+        <button class="btn-plan" id="planButtonMobile" onclick="planCrawl()" disabled>Plan</button>
+        <button class="btn-clear" onclick="clearForm()" title="Clear all selections">Clear</button>
+      </div>
+    </div>
+
+    <!-- Bottom Sheet (Results) -->
+    <div class="bottom-sheet" id="bottomSheet">
+      <div class="bottom-sheet-handle"></div>
+      <div class="bottom-sheet-content">
+        <div class="error-message" id="errorMessageMobile"></div>
+        <div class="success-message" id="successMessageMobile"></div>
+        <div class="loading" id="loadingMobile">
+          <div class="spinner"></div>
+          <p>Planning your route...</p>
+        </div>
+        <div class="results-section" id="resultsSectionMobile" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0;">📍 Your Route</h3>
+          </div>
+          <div class="route-stats">
+            <div class="stat-card">
+              <div class="stat-value" id="totalDistanceMobile">-</div>
+              <div class="stat-label">Distance</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="totalTimeMobile">-</div>
+              <div class="stat-label">Est. Time</div>
+            </div>
+          </div>
+          <div class="pubs-list" id="pubsListMobile"></div>
         </div>
       </div>
     </div>

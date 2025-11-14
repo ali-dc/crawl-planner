@@ -2,6 +2,87 @@
 const API_URL = window.location.origin;
 const BRISTOL_CENTER = [-2.5879, 51.4545]; // [lng, lat] for MapLibre
 
+// Update mobile bottom bar status
+function updateBarStatus() {
+  if (window.innerWidth <= 768) {
+    const barStatus = document.getElementById('barStatus');
+    if (!state.startPoint) {
+      barStatus.textContent = 'Select a start point';
+    } else if (!state.endPoint) {
+      barStatus.textContent = 'Select an end point';
+    } else {
+      barStatus.textContent = 'Ready to plan';
+    }
+  }
+}
+
+// Show bottom sheet
+function showBottomSheet() {
+  const bottomSheet = document.getElementById('bottomSheet');
+  bottomSheet.classList.add('active');
+}
+
+// Hide bottom sheet
+function hideBottomSheet() {
+  const bottomSheet = document.getElementById('bottomSheet');
+  bottomSheet.classList.remove('active', 'expanded');
+}
+
+// Handle bottom sheet dragging
+function initBottomSheetDrag() {
+  const bottomSheet = document.getElementById('bottomSheet');
+  const handle = bottomSheet.querySelector('.bottom-sheet-handle');
+  let isDragging = false;
+  let startY = 0;
+  let currentY = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (window.innerWidth > 768) return;
+    isDragging = true;
+    startY = e.clientY;
+    currentY = 0;
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!isDragging || window.innerWidth > 768) return;
+
+    currentY = e.clientY - startY;
+
+    // Only allow dragging down
+    if (currentY > 0) {
+      bottomSheet.style.transform = `translateY(${currentY}px)`;
+    }
+  });
+
+  document.addEventListener('pointerup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+
+    // If dragged down more than 80px, close it
+    if (currentY > 80) {
+      hideBottomSheet();
+      bottomSheet.style.transform = '';
+    } else {
+      // Snap back to open position
+      bottomSheet.style.transform = '';
+    }
+    currentY = 0;
+  });
+}
+
+// Also allow dragging on the content area
+function enableContentScroll() {
+  const bottomSheet = document.getElementById('bottomSheet');
+  const content = bottomSheet.querySelector('.bottom-sheet-content');
+
+  let isScrolling = false;
+
+  // Allow normal scrolling while sheet is open
+  content.addEventListener('scroll', () => {
+    isScrolling = true;
+  });
+}
+
 // State
 let state = {
   startPoint: null,
@@ -51,8 +132,8 @@ map.on('click', function (e) {
 
 function setStartPoint(coords) {
   state.startPoint = coords;
-  updateStartDisplay();
   updatePlanButton();
+  updateBarStatus();
 
   // Remove existing start marker if present
   if (state.markers.start) {
@@ -84,8 +165,8 @@ function setStartPoint(coords) {
 
 function setEndPoint(coords) {
   state.endPoint = coords;
-  updateEndDisplay();
   updatePlanButton();
+  updateBarStatus();
 
   // Remove existing end marker if present
   if (state.markers.end) {
@@ -115,47 +196,15 @@ function setEndPoint(coords) {
   state.markers.end.setPopup(popup);
 }
 
-function updateStartDisplay() {
-  const display = document.getElementById('startDisplay');
-  const stepNumber = document.getElementById('startStepNumber');
-  if (state.startPoint) {
-    display.textContent = `✓ ${state.startPoint[1].toFixed(4)}, ${state.startPoint[0].toFixed(4)}`;
-    display.classList.remove('empty');
-    stepNumber.classList.add('completed');
-  } else {
-    display.textContent = 'Click on map...';
-    display.classList.add('empty');
-    stepNumber.classList.remove('completed');
-  }
-}
-
-function updateEndDisplay() {
-  const display = document.getElementById('endDisplay');
-  const stepNumber = document.getElementById('endStepNumber');
-  if (state.endPoint) {
-    display.textContent = `✓ ${state.endPoint[1].toFixed(4)}, ${state.endPoint[0].toFixed(4)}`;
-    display.classList.remove('empty');
-    stepNumber.classList.add('completed');
-  } else {
-    display.textContent = 'Click on map...';
-    display.classList.add('empty');
-    stepNumber.classList.remove('completed');
-  }
-}
-
-function updatePubCount() {
-  const count = document.getElementById('numPubs').value;
-  document.getElementById('pubCount').textContent = count;
-}
-
 function updatePlanButton() {
-  const button = document.getElementById('planButton');
+  const buttonMobile = document.getElementById('planButtonMobile');
   const canPlan = state.startPoint && state.endPoint;
-  button.disabled = !canPlan;
+  buttonMobile.disabled = !canPlan;
 }
 
 async function planCrawl() {
-  const numPubs = parseInt(document.getElementById('numPubs').value);
+  // Use mobile input if on mobile, otherwise use desktop input
+  const numPubs = parseInt(document.getElementById('numPubsMobile').value);
 
   if (!state.startPoint || !state.endPoint) {
     showMessage('Please select both start and end locations', 'error');
@@ -260,6 +309,11 @@ function drawRoutePolylines(data) {
 function displayRoute(data) {
   state.route = data;
 
+  // Show sidebar on desktop when route is planned
+  if (window.innerWidth > 768) {
+    document.getElementById('sidebar').classList.remove('hidden');
+  }
+
   // Draw route polylines first (so they appear under markers)
   drawRoutePolylines(data);
 
@@ -324,11 +378,18 @@ function displayResults(data) {
   const distance = (data.total_distance_meters / 1000).toFixed(2);
   const time = Math.round(data.estimated_time_minutes);
 
+  // Desktop version
   document.getElementById('totalDistance').textContent = `${distance} km`;
   document.getElementById('totalTime').textContent = `${time} min`;
 
+  // Mobile version
+  document.getElementById('totalDistanceMobile').textContent = `${distance} km`;
+  document.getElementById('totalTimeMobile').textContent = `${time} min`;
+
   const pubsList = document.getElementById('pubsList');
+  const pubsListMobile = document.getElementById('pubsListMobile');
   pubsList.innerHTML = '';
+  pubsListMobile.innerHTML = '';
 
   data.pubs.forEach((pub, index) => {
     const pubElement = document.createElement('div');
@@ -343,7 +404,7 @@ function displayResults(data) {
       legInfo = `<div class="leg-info">${legDistance} km • ${legTime} min</div>`;
     }
 
-    pubElement.innerHTML = `
+    const pubHTML = `
             <div style="display: flex; align-items: start; gap: 10px;">
                 <div class="pub-number">${index + 1}</div>
                 <div style="flex: 1;">
@@ -352,10 +413,25 @@ function displayResults(data) {
                 </div>
             </div>
         `;
+
+    pubElement.innerHTML = pubHTML;
     pubsList.appendChild(pubElement);
+
+    const pubElementMobile = document.createElement('div');
+    pubElementMobile.className = 'pub-item';
+    pubElementMobile.innerHTML = pubHTML;
+    pubsListMobile.appendChild(pubElementMobile);
   });
 
-  document.getElementById('resultsSection').style.display = 'block';
+  // Show results in sidebar and hide form on desktop
+  if (window.innerWidth > 768) {
+    document.getElementById('resultsSection').style.display = 'block';
+
+    // Hide bottom bar on desktop (when results are shown in sidebar)
+    document.querySelector('.mobile-bottom-bar').style.display = 'none';
+  }
+
+  document.getElementById('resultsSectionMobile').style.display = 'block';
 }
 
 function clearForm() {
@@ -388,13 +464,21 @@ function clearForm() {
   });
   state.routePolylines = [];
 
-  document.getElementById('numPubs').value = '5';
-  updatePubCount();
-  updateStartDisplay();
-  updateEndDisplay();
-  updatePlanButton();
+  // Hide sidebar when route is cleared
+  if (window.innerWidth > 768) {
+    document.getElementById('sidebar').classList.add('hidden');
+  }
 
+  document.getElementById('numPubsMobile').value = '5';
+  updatePlanButton();
+  updateBarStatus();
+  hideBottomSheet();
   document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('resultsSectionMobile').style.display = 'none';
+
+  // Clear inline styles to let CSS media queries control bar visibility
+  document.querySelector('.mobile-bottom-bar').style.display = '';
+
   hideMessages();
   state.selectingStart = true;
   state.selectingEnd = false;
@@ -402,17 +486,31 @@ function clearForm() {
 
 function showLoading(show) {
   const loading = document.getElementById('loading');
+  const loadingMobile = document.getElementById('loadingMobile');
   if (show) {
     loading.classList.add('show');
+    loadingMobile.classList.add('show');
+    // Show bottom sheet when loading on mobile
+    if (window.innerWidth <= 768) {
+      showBottomSheet();
+    }
   } else {
     loading.classList.remove('show');
+    loadingMobile.classList.remove('show');
   }
 }
 
 function showMessage(message, type) {
   hideMessages();
+
+  // Desktop messages
   const messageEl = type === 'error' ? document.getElementById('errorMessage') :
     type === 'success' ? document.getElementById('successMessage') :
+      null;
+
+  // Mobile messages
+  const messageElMobile = type === 'error' ? document.getElementById('errorMessageMobile') :
+    type === 'success' ? document.getElementById('successMessageMobile') :
       null;
 
   if (messageEl && type !== 'info') {
@@ -423,14 +521,46 @@ function showMessage(message, type) {
       setTimeout(() => messageEl.classList.remove('show'), 3000);
     }
   }
+
+  if (messageElMobile && type !== 'info') {
+    messageElMobile.textContent = message;
+    messageElMobile.classList.add('show');
+
+    if (type === 'success') {
+      setTimeout(() => messageElMobile.classList.remove('show'), 3000);
+    }
+  }
 }
 
 function hideMessages() {
   document.getElementById('errorMessage').classList.remove('show');
   document.getElementById('successMessage').classList.remove('show');
+  document.getElementById('errorMessageMobile').classList.remove('show');
+  document.getElementById('successMessageMobile').classList.remove('show');
 }
 
 // Initialize displays
-updateStartDisplay();
-updateEndDisplay();
 updatePlanButton();
+updateBarStatus();
+
+// Hide sidebar initially on desktop (it only shows when a route is planned)
+if (window.innerWidth > 768) {
+  document.getElementById('sidebar').classList.add('hidden');
+}
+
+// Handle window resize to properly show/hide bottom bar
+function handleResize() {
+  const mobileBar = document.querySelector('.mobile-bottom-bar');
+
+  // Only set inline styles if we're overriding for a specific reason (after results)
+  // Otherwise rely on CSS media queries
+  if (!state.route) {
+    // No route active, let CSS media queries control visibility
+    mobileBar.style.display = '';
+  }
+}
+
+window.addEventListener('resize', handleResize);
+
+// Initialize bottom sheet drag handling
+initBottomSheetDrag();
