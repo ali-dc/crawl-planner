@@ -7,8 +7,6 @@ from typing import List, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 # Load environment variables from .env file
 load_dotenv()
@@ -93,21 +91,6 @@ class PubCrawlPlannerApp:
         self.app.post("/parse", response_model=dict)(self.parse_raw_data)
         self.app.get("/status", response_model=PrecomputeStatusResponse)(self.get_status)
 
-        # Serve Vite dist folder if it exists
-        dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-        if os.path.isdir(dist_path):
-            self.app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
-            self.app.get("/")(self.serve_vite_index)
-            self.app.get("/{full_path:path}")(self.serve_vite_file)
-        else:
-            # Fallback for development: serve old static files
-            self.app.get("/")(self.serve_index)
-            self.app.get("/styles.css")(self.serve_styles)
-            self.app.get("/app.js")(self.serve_app_js)
-            # Mount static files directory
-            if os.path.isdir("static"):
-                self.app.mount("/static", StaticFiles(directory="static"), name="static")
-
     @asynccontextmanager
     async def _lifespan(self, app: FastAPI):
         """Startup and shutdown logic"""
@@ -168,37 +151,6 @@ class PubCrawlPlannerApp:
             return True
         except Exception:
             return False
-
-    async def serve_index(self) -> FileResponse:
-        """Serve the index.html file"""
-        res = FileResponse("index.html", media_type="text/html")
-        print("Serving index.html")
-        return res
-
-    async def serve_styles(self) -> FileResponse:
-        """Serve the styles.css file"""
-        return FileResponse("styles.css", media_type="text/css")
-
-    async def serve_app_js(self) -> FileResponse:
-        """Serve the app.js file"""
-        return FileResponse("app.js", media_type="text/javascript")
-
-    async def serve_vite_index(self) -> FileResponse:
-        """Serve the Vite-built index.html file"""
-        dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-        return FileResponse(os.path.join(dist_path, "index.html"), media_type="text/html")
-
-    async def serve_vite_file(self, full_path: str) -> FileResponse:
-        """Serve Vite-built static files or index.html for SPA routing"""
-        dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-        file_path = os.path.join(dist_path, full_path)
-
-        # Check if file exists
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-
-        # Return index.html for SPA routing (all non-file paths go to index.html)
-        return FileResponse(os.path.join(dist_path, "index.html"), media_type="text/html")
 
     async def health_check(self) -> HealthResponse:
         """Check API and OSRM server health"""

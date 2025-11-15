@@ -16,14 +16,13 @@ COPY frontend/.eslintrc.cjs ./
 RUN npm run build
 
 # Nginx stage
-FROM nginx:latest
+FROM nginx:1.27-alpine
 
 # Install certbot and certbot nginx plugin
-RUN apt-get update && apt-get install -y \
+RUN apk add --no-cache \
     certbot \
-    python3-certbot-nginx \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+    certbot-nginx \
+    curl
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
