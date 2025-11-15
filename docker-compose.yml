@@ -32,7 +32,6 @@ services:
       - ./backend/data.json:/app/data.json
       - ./backend/raw.data:/app/raw.data
       - ./init-precompute.sh:/init-precompute.sh
-      - app-data:/app
     restart: unless-stopped
     healthcheck:
       test:
@@ -73,6 +72,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
-
-volumes:
-  app-data:
