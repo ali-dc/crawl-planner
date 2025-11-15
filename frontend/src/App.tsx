@@ -137,18 +137,26 @@ function App() {
             route={state.route}
             visible={state.route !== null}
             onClose={handleClear}
+            startPoint={state.startPoint}
+            endPoint={state.endPoint}
+            numPubs={state.numPubs}
+            onRefresh={handlePlan}
+            loading={loading}
           />
         </Box>
 
-        <BottomBar
-          startPoint={state.startPoint}
-          endPoint={state.endPoint}
-          numPubs={state.numPubs}
-          onNumPubsChange={setNumPubs}
-          onPlan={handlePlan}
-          onClear={handleClear}
-          loading={loading}
-        />
+        {/* Show BottomBar only when no route is planned (on mobile, MobileResults replaces it) */}
+        {!state.route && (
+          <BottomBar
+            startPoint={state.startPoint}
+            endPoint={state.endPoint}
+            numPubs={state.numPubs}
+            onNumPubsChange={setNumPubs}
+            onPlan={handlePlan}
+            onClear={handleClear}
+            loading={loading}
+          />
+        )}
 
         <Messages message={message} type={messageType} />
         <Loading loading={loading} />

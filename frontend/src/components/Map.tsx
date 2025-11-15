@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useMediaQuery, useTheme } from '@mui/material'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { createStartMarkerElement, createEndMarkerElement } from '../utils/markerIcons'
@@ -23,6 +24,9 @@ const Map: React.FC<MapProps> = ({
   selectingStart,
   selectingEnd,
 }) => {
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [isMapReady, setIsMapReady] = useState(false)
@@ -241,7 +245,7 @@ const Map: React.FC<MapProps> = ({
         }
       })
 
-      // Fit bounds to all points, accounting for the sidebar on the right
+      // Fit bounds to all points, accounting for the sidebar on the right (desktop only)
       const bounds = new maplibregl.LngLatBounds()
       if (startPoint) bounds.extend(startPoint)
       if (endPoint) bounds.extend(endPoint)
@@ -250,12 +254,16 @@ const Map: React.FC<MapProps> = ({
           bounds.extend([pub.longitude, pub.latitude])
         })
       }
-      // Use padding with extra space on the right for the 400px sidebar
+      // Use responsive padding: right padding only on desktop where sidebar is visible
       if (map.current) {
-        map.current.fitBounds(bounds, { padding: { top: 50, bottom: 50, left: 50, right: 450 } })
+        const rightPadding = isMobile ? 50 : 450
+        map.current.fitBounds(bounds, {
+          padding: { top: 50, bottom: isMobile ? 120 : 50, left: 50, right: rightPadding },
+          maxZoom: 15,
+        })
       }
     }
-  }, [route, isMapReady])
+  }, [route, isMapReady, isMobile])
 
   return (
     <div

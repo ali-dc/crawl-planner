@@ -13,8 +13,13 @@ import {
   useMediaQuery,
   useTheme,
   Divider,
+  IconButton,
 } from '@mui/material'
 import LocationOnIcon from '@mui/icons-material/LocationOn'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import CloseIcon from '@mui/icons-material/Close'
+import RefreshIcon from '@mui/icons-material/Refresh'
 import type { Route } from '../services/api'
 
 interface RouteStatsProps {
@@ -146,10 +151,19 @@ const DesktopResults: React.FC<DesktopResultsProps> = ({ route, visible }) => {
 interface MobileResultsProps {
   route: Route | null
   visible: boolean
+  onClose?: () => void
+  onRefresh?: () => void
+  loading?: boolean
 }
 
-const MobileResults: React.FC<MobileResultsProps> = ({ route, visible }) => {
-  const [isOpen, setIsOpen] = useState(true)
+const MobileResults: React.FC<MobileResultsProps> = ({
+  route,
+  visible,
+  onClose,
+  onRefresh,
+  loading,
+}) => {
+  const [isExpanded, setIsExpanded] = useState(true)
 
   if (!visible || !route) return null
 
@@ -157,44 +171,125 @@ const MobileResults: React.FC<MobileResultsProps> = ({ route, visible }) => {
   const time = Math.round(route.estimated_time_minutes)
 
   return (
-    <Drawer
-      anchor="bottom"
-      open={isOpen}
-      onClose={() => setIsOpen(false)}
+    <Box
       sx={{
-        '& .MuiDrawer-paper': {
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-        },
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 1300,
+        backgroundColor: 'white',
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        boxShadow: '0px -2px 8px rgba(0, 0, 0, 0.15)',
+        maxHeight: isExpanded ? '85vh' : '120px',
+        transition: 'max-height 0.3s ease-in-out',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
+      {/* Header with collapse/expand and close buttons */}
       <Box
         sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
           p: 2,
-          maxHeight: '80vh',
-          overflowY: 'auto',
+          borderBottom: '1px solid #e0e0e0',
+          flexShrink: 0,
         }}
       >
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-          <Box
-            sx={{
-              width: 40,
-              height: 4,
-              backgroundColor: 'divider',
-              borderRadius: 2,
-            }}
-          />
-        </Box>
-
-        <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <LocationOnIcon color="primary" />
-          Your Route
-        </Typography>
-
-        <RouteStats distance={distance} time={time} />
-        <PubsList route={route} />
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Your Route
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <IconButton
+            size="small"
+            onClick={onRefresh}
+            disabled={loading}
+            sx={{
+              color: 'primary.main',
+              animation: loading ? 'spin 1s linear infinite' : 'none',
+              '@keyframes spin': {
+                '0%': { transform: 'rotate(0deg)' },
+                '100%': { transform: 'rotate(360deg)' },
+              },
+            }}
+            title="Refresh with a different route"
+          >
+            <RefreshIcon />
+          </IconButton>
+          <IconButton
+            size="small"
+            onClick={() => setIsExpanded(!isExpanded)}
+            sx={{ color: 'primary.main' }}
+          >
+            {isExpanded ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+          </IconButton>
+          <IconButton
+            size="small"
+            onClick={onClose}
+            sx={{ color: 'error.main' }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Box>
       </Box>
-    </Drawer>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <Box
+          sx={{
+            overflowY: 'auto',
+            flex: 1,
+            p: 2,
+          }}
+        >
+          <RouteStats distance={distance} time={time} />
+          <PubsList route={route} />
+        </Box>
+      )}
+
+      {/* Collapsed preview */}
+      {!isExpanded && (
+        <Box
+          sx={{
+            px: 2,
+            pb: 2,
+            display: 'flex',
+            gap: 2,
+          }}
+        >
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="caption" color="textSecondary">
+              Distance
+            </Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {distance} km
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="caption" color="textSecondary">
+              Est. Time
+            </Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {time} min
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="caption" color="textSecondary">
+              Pubs
+            </Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {route.pubs.length}
+            </Typography>
+          </Box>
+        </Box>
+      )}
+    </Box>
   )
 }
 
@@ -202,16 +297,36 @@ interface ResultsPanelProps {
   route: Route | null
   visible: boolean
   onClose: () => void
+  startPoint?: [number, number] | null
+  endPoint?: [number, number] | null
+  numPubs?: number
+  onRefresh?: () => void
+  loading?: boolean
 }
 
-const ResultsPanel: React.FC<ResultsPanelProps> = ({ route, visible }) => {
+const ResultsPanel: React.FC<ResultsPanelProps> = ({
+  route,
+  visible,
+  onClose,
+  startPoint,
+  endPoint,
+  numPubs,
+  onRefresh,
+  loading,
+}) => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 
   if (!visible || !route) return null
 
   return isMobile ? (
-    <MobileResults route={route} visible={visible} />
+    <MobileResults
+      route={route}
+      visible={visible}
+      onClose={onClose}
+      onRefresh={onRefresh}
+      loading={loading}
+    />
   ) : (
     <DesktopResults route={route} visible={visible} />
   )
