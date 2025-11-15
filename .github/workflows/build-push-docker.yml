@@ -37,6 +37,10 @@ jobs:
             dockerfile: Dockerfile.nginx
             context: .
             tags: nginx,nginx-latest
+          - name: osrm-builder
+            dockerfile: Dockerfile.osrm-builder
+            context: .
+            tags: osrm-builder,osrm-builder-latest
 
     steps:
       - name: Checkout repository

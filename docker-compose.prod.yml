@@ -1,4 +1,12 @@
 services:
+  osrm-builder:
+    image: ghcr.io/ali-dc/crawl-planner-osrm-builder:main
+    container_name: osrm-builder
+    volumes:
+      - ./osrm-data:/data
+    profiles:
+      - build
+
   osrm:
     image: ghcr.io/project-osrm/osrm-backend
     container_name: osrm-backend
