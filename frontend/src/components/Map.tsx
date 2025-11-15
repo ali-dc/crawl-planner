@@ -1,26 +1,35 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { createStartMarkerElement, createEndMarkerElement } from '../utils/markerIcons'
+import type { Route } from '../services/api'
 
-const BRISTOL_CENTER = [-2.5879, 51.4545]
+const BRISTOL_CENTER: [number, number] = [-2.5879, 51.4545]
 
-const Map = ({
+interface MapProps {
+  startPoint: [number, number] | null
+  endPoint: [number, number] | null
+  route: Route | null
+  onMapClick: (coords: [number, number]) => void
+  selectingStart: boolean
+  selectingEnd: boolean
+}
+
+const Map: React.FC<MapProps> = ({
   startPoint,
   endPoint,
   route,
   onMapClick,
-  numPubs,
   selectingStart,
-  selectingEnd
+  selectingEnd,
 }) => {
-  const mapContainer = useRef(null)
-  const map = useRef(null)
+  const mapContainer = useRef<HTMLDivElement>(null)
+  const map = useRef<maplibregl.Map | null>(null)
   const [isMapReady, setIsMapReady] = useState(false)
-  const startMarkerRef = useRef(null)
-  const endMarkerRef = useRef(null)
-  const pubMarkersRef = useRef([])
-  const popupRef = useRef(null)
+  const startMarkerRef = useRef<maplibregl.Marker | null>(null)
+  const endMarkerRef = useRef<maplibregl.Marker | null>(null)
+  const pubMarkersRef = useRef<maplibregl.Marker[]>([])
+  const popupRef = useRef<maplibregl.Popup | null>(null)
 
   // Initialize map
   useEffect(() => {
@@ -131,7 +140,7 @@ const Map = ({
           cursor: pointer;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         `
-        pubEl.textContent = index + 1
+        pubEl.textContent = String(index + 1)
 
         pubEl.addEventListener('click', (e) => {
           e.stopPropagation()
@@ -155,13 +164,15 @@ const Map = ({
           popupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false })
             .setLngLat([pub.longitude, pub.latitude])
             .setDOMContent(popupContent)
-            .addTo(map.current)
+            .addTo(map.current!)
         })
 
-        const pubMarker = new maplibregl.Marker({ element: pubEl })
-          .setLngLat([pub.longitude, pub.latitude])
-          .addTo(map.current)
-        pubMarkersRef.current.push(pubMarker)
+        if (map.current) {
+          const pubMarker = new maplibregl.Marker({ element: pubEl })
+            .setLngLat([pub.longitude, pub.latitude])
+            .addTo(map.current)
+          pubMarkersRef.current.push(pubMarker)
+        }
       })
     }
   }, [route, isMapReady])
@@ -171,19 +182,21 @@ const Map = ({
     if (!map.current || !isMapReady) return
 
     // Clear existing route layers and sources
-    const existingLayers = map.current
-      .getStyle()
-      .layers.filter((layer) => layer.id.startsWith('route-'))
-    existingLayers.forEach((layer) => {
-      map.current.removeLayer(layer.id)
-    })
+    if (map.current) {
+      const existingLayers = map.current
+        .getStyle()
+        .layers.filter((layer) => layer.id.startsWith('route-'))
+      existingLayers.forEach((layer) => {
+        map.current!.removeLayer(layer.id)
+      })
 
-    const existingSources = map.current.getStyle().sources
-    Object.keys(existingSources).forEach((sourceId) => {
-      if (sourceId.startsWith('route-source-')) {
-        map.current.removeSource(sourceId)
-      }
-    })
+      const existingSources = map.current.getStyle().sources
+      Object.keys(existingSources).forEach((sourceId) => {
+        if (sourceId.startsWith('route-source-')) {
+          map.current!.removeSource(sourceId)
+        }
+      })
+    }
 
     // Draw route polylines if available
     if (route && route.legs && route.legs.length > 0) {
@@ -200,16 +213,19 @@ const Map = ({
 
         try {
           // Check if source already exists
-          if (!map.current.getSource(sourceId)) {
-            map.current.addSource(sourceId, {
+          if (!map.current!.getSource(sourceId)) {
+            map.current!.addSource(sourceId, {
               type: 'geojson',
-              data: leg.geometry,
+              data: {
+                type: 'LineString',
+                coordinates: leg.geometry.coordinates,
+              },
             })
           }
 
           // Check if layer already exists
-          if (!map.current.getLayer(layerId)) {
-            map.current.addLayer({
+          if (!map.current!.getLayer(layerId)) {
+            map.current!.addLayer({
               id: layerId,
               type: 'line',
               source: sourceId,
@@ -235,7 +251,9 @@ const Map = ({
         })
       }
       // Use padding with extra space on the right for the 400px sidebar
-      map.current.fitBounds(bounds, { padding: { top: 50, bottom: 50, left: 50, right: 450 } })
+      if (map.current) {
+        map.current.fitBounds(bounds, { padding: { top: 50, bottom: 50, left: 50, right: 450 } })
+      }
     }
   }, [route, isMapReady])
 

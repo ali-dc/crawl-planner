@@ -1,7 +1,12 @@
-import { AppBar, Toolbar, Typography, Chip, Box } from '@mui/material'
+import { AppBar, Toolbar, Typography, Chip } from '@mui/material'
 import { IoBeer } from 'react-icons/io5'
 
-const Header = ({ startPoint, endPoint }) => {
+interface HeaderProps {
+  startPoint: [number, number] | null
+  endPoint: [number, number] | null
+}
+
+const Header: React.FC<HeaderProps> = ({ startPoint, endPoint }) => {
   const getBarStatus = () => {
     if (!startPoint) return 'Select a start point'
     if (!endPoint) return 'Select an end point'

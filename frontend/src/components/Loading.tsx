@@ -1,7 +1,10 @@
-import React from 'react'
 import { Backdrop, CircularProgress, Box, Typography } from '@mui/material'
 
-const Loading = ({ loading }) => {
+interface LoadingProps {
+  loading: boolean
+}
+
+const Loading: React.FC<LoadingProps> = ({ loading }) => {
   return (
     <Backdrop
       sx={{

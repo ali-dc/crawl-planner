@@ -1,18 +1,26 @@
-import React from 'react'
 import {
   Paper,
   Box,
   TextField,
   Button,
   Stack,
-  Typography,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
 import ClearIcon from '@mui/icons-material/Clear'
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk'
 
-const BottomBar = ({
+interface BottomBarProps {
+  startPoint: [number, number] | null
+  endPoint: [number, number] | null
+  numPubs: number
+  onNumPubsChange: (numPubs: number) => void
+  onPlan: () => void
+  onClear: () => void
+  loading: boolean
+}
+
+const BottomBar: React.FC<BottomBarProps> = ({
   startPoint,
   endPoint,
   numPubs,

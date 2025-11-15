@@ -9,7 +9,9 @@ RUN npm ci
 
 COPY frontend/src ./src
 COPY frontend/index.html ./
-COPY frontend/vite.config.js ./
+COPY frontend/vite.config.ts ./
+COPY frontend/tsconfig.json ./
+COPY frontend/tsconfig.node.json ./
 COPY frontend/.eslintrc.cjs ./
 
 # Build the frontend

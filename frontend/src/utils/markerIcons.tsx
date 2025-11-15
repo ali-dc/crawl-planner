@@ -5,12 +5,16 @@ import { MdFlag } from 'react-icons/md'
 
 /**
  * Creates a DOM element with a react-icon rendered inside
- * @param {React.ComponentType} IconComponent - The react-icons component to render
- * @param {string} color - CSS color for the icon
- * @param {string} size - Icon size (defaults to 32px)
- * @returns {HTMLElement} DOM element containing the rendered icon
+ * @param IconComponent - The react-icons component to render
+ * @param color - CSS color for the icon
+ * @param size - Icon size (defaults to 32px)
+ * @returns DOM element containing the rendered icon
  */
-export const createIconMarkerElement = (IconComponent, color, size = '32px') => {
+export const createIconMarkerElement = (
+  IconComponent: React.ComponentType,
+  color: string,
+  size: string = '32px'
+): HTMLElement => {
   const container = document.createElement('div')
   container.style.cssText = `
     width: ${size};
@@ -34,16 +38,16 @@ export const createIconMarkerElement = (IconComponent, color, size = '32px') => 
 
 /**
  * Creates a start point marker element
- * @returns {HTMLElement}
+ * @returns HTMLElement
  */
-export const createStartMarkerElement = () => {
+export const createStartMarkerElement = (): HTMLElement => {
   return createIconMarkerElement(MdLocationOn, '#22c55e')
 }
 
 /**
  * Creates an end point marker element
- * @returns {HTMLElement}
+ * @returns HTMLElement
  */
-export const createEndMarkerElement = () => {
+export const createEndMarkerElement = (): HTMLElement => {
   return createIconMarkerElement(MdFlag, '#f05c2f')
 }

@@ -24,8 +24,8 @@ function App() {
   } = usePlanState()
 
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState(null)
-  const [messageType, setMessageType] = useState(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [messageType, setMessageType] = useState<'success' | 'error' | null>(null)
 
   // Use refs to track state for map click handler
   const selectingStartRef = useRef(true)
@@ -38,7 +38,7 @@ function App() {
   }, [state.selectingStart, state.selectingEnd])
 
   // Handle map clicks for start/end point selection
-  const handleMapClick = useCallback(([lng, lat]) => {
+  const handleMapClick = useCallback(([lng, lat]: [number, number]) => {
     if (selectingStartRef.current) {
       setStartPoint([lng, lat])
       setSelectingStart(false)
@@ -49,9 +49,9 @@ function App() {
       setSelectingEnd(false)
       showMessage('End location selected', 'success')
     }
-  }, [])
+  }, [setStartPoint, setEndPoint, setSelectingStart, setSelectingEnd])
 
-  const showMessage = (msg, type) => {
+  const showMessage = (msg: string, type: 'success' | 'error') => {
     setMessage(msg)
     setMessageType(type)
   }
@@ -76,7 +76,8 @@ function App() {
       showMessage('Route planned successfully!', 'success')
     } catch (error) {
       console.error('Error planning route:', error)
-      showMessage(`Error: ${error.message}`, 'error')
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      showMessage(`Error: ${errorMessage}`, 'error')
     } finally {
       setLoading(false)
     }
@@ -84,7 +85,7 @@ function App() {
 
   const handleClear = () => {
     clearForm()
-    showMessage(null)
+    setMessage(null)
   }
 
   return (
@@ -127,7 +128,6 @@ function App() {
               endPoint={state.endPoint}
               route={state.route}
               onMapClick={handleMapClick}
-              numPubs={state.numPubs}
               selectingStart={state.selectingStart}
               selectingEnd={state.selectingEnd}
             />

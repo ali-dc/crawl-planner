@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   Box,
   Card,
@@ -15,10 +15,14 @@ import {
   Divider,
 } from '@mui/material'
 import LocationOnIcon from '@mui/icons-material/LocationOn'
-import TimerIcon from '@mui/icons-material/Timer'
-import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk'
+import type { Route } from '../services/api'
 
-const RouteStats = ({ distance, time }) => (
+interface RouteStatsProps {
+  distance: string
+  time: number
+}
+
+const RouteStats: React.FC<RouteStatsProps> = ({ distance, time }) => (
   <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 3 }}>
     <Card>
       <CardContent sx={{ textAlign: 'center' }}>
@@ -43,7 +47,11 @@ const RouteStats = ({ distance, time }) => (
   </Box>
 )
 
-const PubsList = ({ route }) => (
+interface PubsListProps {
+  route: Route
+}
+
+const PubsList: React.FC<PubsListProps> = ({ route }) => (
   <List sx={{ width: '100%' }}>
     {route.pubs.map((pub, index) => {
       let legInfo = ''
@@ -56,7 +64,7 @@ const PubsList = ({ route }) => (
       }
 
       return (
-        <React.Fragment key={index}>
+        <div key={index}>
           <ListItem
             sx={{
               py: 2,
@@ -91,13 +99,18 @@ const PubsList = ({ route }) => (
             />
           </ListItem>
           {index < route.pubs.length - 1 && <Divider />}
-        </React.Fragment>
+        </div>
       )
     })}
   </List>
 )
 
-const DesktopResults = ({ route, visible }) => {
+interface DesktopResultsProps {
+  route: Route | null
+  visible: boolean
+}
+
+const DesktopResults: React.FC<DesktopResultsProps> = ({ route, visible }) => {
   if (!visible || !route) return null
 
   const distance = (route.total_distance_meters / 1000).toFixed(2)
@@ -130,7 +143,12 @@ const DesktopResults = ({ route, visible }) => {
   )
 }
 
-const MobileResults = ({ route, visible }) => {
+interface MobileResultsProps {
+  route: Route | null
+  visible: boolean
+}
+
+const MobileResults: React.FC<MobileResultsProps> = ({ route, visible }) => {
   const [isOpen, setIsOpen] = useState(true)
 
   if (!visible || !route) return null
@@ -180,7 +198,13 @@ const MobileResults = ({ route, visible }) => {
   )
 }
 
-const ResultsPanel = ({ route, visible, onClose }) => {
+interface ResultsPanelProps {
+  route: Route | null
+  visible: boolean
+  onClose: () => void
+}
+
+const ResultsPanel: React.FC<ResultsPanelProps> = ({ route, visible }) => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
 

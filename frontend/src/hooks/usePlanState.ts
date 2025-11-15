@@ -1,7 +1,28 @@
 import { useState, useCallback } from 'react'
+import type { Route } from '../services/api'
+
+interface PlanState {
+  startPoint: [number, number] | null
+  endPoint: [number, number] | null
+  selectingStart: boolean
+  selectingEnd: boolean
+  route: Route | null
+  markers: {
+    start: unknown
+    end: unknown
+    pubs: unknown[]
+  }
+  popups: {
+    start: unknown
+    end: unknown
+    pubs: unknown[]
+  }
+  routePolylines: unknown[]
+  numPubs: number
+}
 
 export const usePlanState = () => {
-  const [state, setState] = useState({
+  const [state, setState] = useState<PlanState>({
     startPoint: null,
     endPoint: null,
     selectingStart: true,
@@ -21,42 +42,42 @@ export const usePlanState = () => {
     numPubs: 5,
   })
 
-  const setStartPoint = useCallback((coords) => {
+  const setStartPoint = useCallback((coords: [number, number]) => {
     setState((prev) => ({
       ...prev,
       startPoint: coords,
     }))
   }, [])
 
-  const setEndPoint = useCallback((coords) => {
+  const setEndPoint = useCallback((coords: [number, number]) => {
     setState((prev) => ({
       ...prev,
       endPoint: coords,
     }))
   }, [])
 
-  const setRoute = useCallback((route) => {
+  const setRoute = useCallback((route: Route | null) => {
     setState((prev) => ({
       ...prev,
       route,
     }))
   }, [])
 
-  const setNumPubs = useCallback((numPubs) => {
+  const setNumPubs = useCallback((numPubs: number) => {
     setState((prev) => ({
       ...prev,
       numPubs,
     }))
   }, [])
 
-  const setSelectingStart = useCallback((selecting) => {
+  const setSelectingStart = useCallback((selecting: boolean) => {
     setState((prev) => ({
       ...prev,
       selectingStart: selecting,
     }))
   }, [])
 
-  const setSelectingEnd = useCallback((selecting) => {
+  const setSelectingEnd = useCallback((selecting: boolean) => {
     setState((prev) => ({
       ...prev,
       selectingEnd: selecting,

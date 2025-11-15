@@ -1,7 +1,12 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Snackbar, Alert } from '@mui/material'
 
-const Messages = ({ message, type }) => {
+interface MessagesProps {
+  message: string | null
+  type: 'success' | 'error' | null
+}
+
+const Messages: React.FC<MessagesProps> = ({ message, type }) => {
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
