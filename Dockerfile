@@ -3,6 +3,9 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /uvx /bin/
 
 WORKDIR /app
 
+# Install curl for init-precompute script
+RUN apk add --no-cache curl
+
 # Copy backend pyproject.toml and install Python dependencies
 COPY backend/pyproject.toml .
 COPY backend/uv.lock .
