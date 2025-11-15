@@ -113,9 +113,18 @@ const PubsList: React.FC<PubsListProps> = ({ route }) => (
 interface DesktopResultsProps {
   route: Route | null
   visible: boolean
+  onRefresh?: () => void
+  onClose?: () => void
+  loading?: boolean
 }
 
-const DesktopResults: React.FC<DesktopResultsProps> = ({ route, visible }) => {
+const DesktopResults: React.FC<DesktopResultsProps> = ({
+  route,
+  visible,
+  onRefresh,
+  onClose,
+  loading,
+}) => {
   if (!visible || !route) return null
 
   const distance = (route.total_distance_meters / 1000).toFixed(2)
@@ -134,13 +143,43 @@ const DesktopResults: React.FC<DesktopResultsProps> = ({ route, visible }) => {
         zIndex: 1200,
         borderRadius: 0,
         boxShadow: '-2px 0px 8px rgba(0, 0, 0, 0.15)',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       <Box sx={{ p: 3, height: '100%', overflowY: 'auto' }}>
-        <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <LocationOnIcon color="primary" />
-          Your Route
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+          <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LocationOnIcon color="primary" />
+            Your Route
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            <IconButton
+              size="small"
+              onClick={onRefresh}
+              disabled={loading}
+              sx={{
+                color: 'primary.main',
+                animation: loading ? 'spin 1s linear infinite' : 'none',
+                '@keyframes spin': {
+                  '0%': { transform: 'rotate(0deg)' },
+                  '100%': { transform: 'rotate(360deg)' },
+                },
+              }}
+              title="Refresh with a different route"
+            >
+              <RefreshIcon />
+            </IconButton>
+            <IconButton
+              size="small"
+              onClick={onClose}
+              sx={{ color: 'error.main' }}
+              title="Clear route"
+            >
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </Box>
         <RouteStats distance={distance} time={time} />
         <PubsList route={route} />
       </Box>
@@ -328,7 +367,13 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
       loading={loading}
     />
   ) : (
-    <DesktopResults route={route} visible={visible} />
+    <DesktopResults
+      route={route}
+      visible={visible}
+      onRefresh={onRefresh}
+      onClose={onClose}
+      loading={loading}
+    />
   )
 }
 
