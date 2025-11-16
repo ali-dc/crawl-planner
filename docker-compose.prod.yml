@@ -1,15 +1,6 @@
 services:
-  watchtower:
-    image: containrrr/watchtower
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - WATCHTOWER_POLL_INTERVAL=300 # Check every 5 minutes
-      - WATCHTOWER_CLEANUP=true
-    restart: unless-stopped
-
   osrm-builder:
-    image: ghcr.io/ali-dc/crawl-planner-osrm-builder:main
+    image: ghcr.io/ali-dc/crawl-planner-osrm-builder:latest
     container_name: osrm-builder
     volumes:
       - ./osrm-data:/data
@@ -27,7 +18,7 @@ services:
     restart: unless-stopped
 
   app:
-    image: ghcr.io/ali-dc/crawl-planner-app:main
+    image: ghcr.io/ali-dc/crawl-planner-app:latest
     container_name: crawl-planner-app
     depends_on:
       - osrm
@@ -51,7 +42,7 @@ services:
     command: sh -c "uv run app.py & sleep 2 && sh /init-precompute.sh && wait"
 
   nginx:
-    image: ghcr.io/ali-dc/crawl-planner-nginx:main
+    image: ghcr.io/ali-dc/crawl-planner-nginx:latest
     container_name: crawl-planner-nginx
     ports:
       - "80:80"

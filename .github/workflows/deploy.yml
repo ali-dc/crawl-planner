@@ -1,0 +1,92 @@
+name: Deploy to Digital Ocean
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Docker Images to GHCR"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Digital Ocean
+        id: deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_PRIVATE_KEY }}
+          port: ${{ secrets.DO_SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "🚀 Starting deployment..."
+            DEPLOY_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+            echo "Deployment started at: $DEPLOY_TIME"
+
+            # Navigate to project directory
+            cd ${{ secrets.DO_PROJECT_PATH }} || exit 1
+
+            # Pull latest changes (if using git)
+            echo "📥 Pulling latest code from repository..."
+            git fetch origin 2>&1 || { echo "❌ Failed to fetch from origin"; exit 1; }
+            git checkout origin/main 2>&1 || { echo "❌ Failed to checkout main branch"; exit 1; }
+
+            # Log in to GitHub Container Registry
+            echo "🔐 Logging in to GitHub Container Registry..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin 2>&1 || { echo "❌ Failed to login to GHCR"; exit 1; }
+
+            # Pull latest images
+            echo "📦 Pulling latest Docker images..."
+            docker-compose pull 2>&1 || { echo "❌ Failed to pull images"; exit 1; }
+
+            # Restart services
+            echo "🔄 Restarting Docker services..."
+            docker-compose down 2>&1 || { echo "⚠️  Warning: docker-compose down failed"; }
+            docker-compose up -d 2>&1 || { echo "❌ Failed to start services"; exit 1; }
+
+            # Wait for health checks
+            echo "⏳ Waiting for services to be healthy..."
+            sleep 15
+
+            # Verify deployment
+            echo "✅ Verifying deployment..."
+            docker-compose ps
+
+            # Check if critical services are running
+            RUNNING=$(docker-compose ps -q | wc -l)
+            echo "Running containers: $RUNNING"
+
+            if [ "$RUNNING" -gt 0 ]; then
+              echo "✅ Deployment successful - services are running!"
+            else
+              echo "❌ No containers are running"
+              exit 1
+            fi
+
+            # Clean up unused images
+            echo "🧹 Cleaning up unused Docker images..."
+            docker image prune -f --filter="dangling=true" 2>&1 || { echo "⚠️  Warning: Image cleanup failed"; }
+
+            # Log out
+            docker logout ghcr.io 2>&1 || true
+
+            echo "✅ Deployment completed successfully at $(date '+%Y-%m-%d %H:%M:%S')"
+
+      - name: Deployment Status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment completed successfully!"
+          else
+            echo "❌ Deployment failed!"
+            exit 1
+          fi
