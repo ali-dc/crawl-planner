@@ -27,6 +27,7 @@ services:
     volumes:
       - ./backend/data.json:/app/data.json
       - ./backend/raw.data:/app/raw.data
+      - ./backend/pub_distances.pkl:/app/pub_distances.pkl
       - ./init-precompute.sh:/init-precompute.sh
     restart: unless-stopped
     healthcheck:
