@@ -215,7 +215,6 @@ class PubCrawlPlannerApp:
 
             # Get directions if requested
             legs = None
-            print(f"include_directions: {request.include_directions}")
             if request.include_directions:
                 print(f"Fetching directions for route: {result['route']}")
                 try:
@@ -224,7 +223,6 @@ class PubCrawlPlannerApp:
                         request.start_point.tuple,
                         request.end_point.tuple,
                     )
-                    print(f"Successfully fetched {len(legs)} legs")
                 except Exception as e:
                     print(f"Warning: Failed to get directions: {e}")
                     import traceback
@@ -321,7 +319,6 @@ class PubCrawlPlannerApp:
                 print(f"Fetching directions from {from_coords} to {to_coords}")
                 directions = self.osrm_client.get_directions(from_coords, to_coords)
                 print(f"Got directions: distance={directions['distance']}, duration={directions['duration']}")
-                print(f"Geometry type: {type(directions['geometry'])}")
                 leg = RouteLegModel(
                     from_index=i,
                     to_index=i + 1,
@@ -330,7 +327,6 @@ class PubCrawlPlannerApp:
                     steps=directions["steps"],
                     geometry=directions["geometry"],
                 )
-                print(f"Created leg {i}: {leg}")
                 legs.append(leg)
             except Exception as e:
                 # Log the error for debugging
