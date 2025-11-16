@@ -49,12 +49,12 @@ jobs:
 
             # Pull latest images
             echo "📦 Pulling latest Docker images..."
-            docker compose pull 2>&1 || { echo "❌ Failed to pull images"; exit 1; }
+            docker compose -f docker-compose.prod.yml pull 2>&1 || { echo "❌ Failed to pull images"; exit 1; }
 
             # Restart services
             echo "🔄 Restarting Docker services..."
-            docker compose down 2>&1 || { echo "⚠️  Warning: docker-compose down failed"; }
-            docker compose up -d 2>&1 || { echo "❌ Failed to start services"; exit 1; }
+            docker compose -f docker-compose.prod.yml down 2>&1 || { echo "⚠️  Warning: docker-compose down failed"; }
+            docker compose -f docker-compose.prod.yml up -d 2>&1 || { echo "❌ Failed to start services"; exit 1; }
 
             # Wait for health checks
             echo "⏳ Waiting for services to be healthy..."
@@ -62,10 +62,10 @@ jobs:
 
             # Verify deployment
             echo "✅ Verifying deployment..."
-            docker compose ps
+            docker compose -f docker-compose.prod.yml ps
 
             # Check if critical services are running
-            RUNNING=$(docker compose ps -q | wc -l)
+            RUNNING=$(docker compose -f docker-compose.prod.yml ps -q | wc -l)
             echo "Running containers: $RUNNING"
 
             if [ "$RUNNING" -gt 0 ]; then
