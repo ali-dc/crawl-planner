@@ -4,6 +4,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { createStartMarkerElement, createEndMarkerElement } from '../utils/markerIcons'
 import type { Route } from '../services/api'
+import bristolBoundaryUrl from '../assets/bristol_boundary.geojson?url'
 
 const BRISTOL_CENTER: [number, number] = [-2.5879, 51.4545]
 
@@ -48,7 +49,36 @@ const Map: React.FC<MapProps> = ({
       zoom: 13,
     })
 
-    map.current.on('load', () => {
+    map.current.on('load', async () => {
+      // Add Bristol city boundary
+      const boundarySource = 'bristol-boundary-source'
+      const boundaryLayer = 'bristol-boundary-layer'
+
+      try {
+        if (!map.current!.getSource(boundarySource)) {
+          const response = await fetch(bristolBoundaryUrl)
+          const boundaryData = await response.json()
+
+          map.current!.addSource(boundarySource, {
+            type: 'geojson',
+            data: boundaryData,
+          })
+
+          map.current!.addLayer({
+            id: boundaryLayer,
+            type: 'line',
+            source: boundarySource,
+            paint: {
+              'line-color': '#aaaaaa',
+              'line-width': 2,
+              'line-opacity': 1,
+            },
+          })
+        }
+      } catch (error) {
+        console.warn('Could not load Bristol boundary:', error)
+      }
+
       setIsMapReady(true)
     })
 

@@ -20,11 +20,15 @@ COPY backend/api_schemas.py .
 COPY backend/parse.py .
 COPY backend/precompute_distances.py .
 
+# Copy entrypoint script
+COPY entrypoint.sh .
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://127.0.0.1:8000/health || exit 1
 
-# Run the application
-CMD ["uv", "run", "app.py"]
+# Run the application via entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]
