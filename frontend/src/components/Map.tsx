@@ -3,6 +3,7 @@ import { useMediaQuery, useTheme } from '@mui/material'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { createStartMarkerElement, createEndMarkerElement } from '../utils/markerIcons'
+import { decodePolyline } from '../utils/polyline'
 import type { Route } from '../services/api'
 import bristolBoundaryUrl from '../assets/bristol_boundary.geojson?url'
 
@@ -237,8 +238,17 @@ const Map: React.FC<MapProps> = ({
       const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316']
 
       route.legs.forEach((leg, legIndex) => {
-        if (!leg.geometry) {
-          console.warn(`Leg ${legIndex} has no geometry`)
+        // Try to use encoded polyline first, fall back to raw geometry
+        let coordinates: [number, number][] | null = null
+
+        if (leg.geometry_encoded) {
+          coordinates = decodePolyline(leg.geometry_encoded)
+        } else if (leg.geometry && leg.geometry.coordinates) {
+          coordinates = leg.geometry.coordinates
+        }
+
+        if (!coordinates || coordinates.length === 0) {
+          console.warn(`Leg ${legIndex} has no valid geometry`)
           return
         }
 
@@ -252,7 +262,7 @@ const Map: React.FC<MapProps> = ({
               type: 'geojson',
               data: {
                 type: 'LineString',
-                coordinates: leg.geometry.coordinates,
+                coordinates: coordinates,
               },
             })
           }

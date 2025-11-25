@@ -4,7 +4,11 @@ import os
 import json
 from typing import List, Tuple
 from tqdm import tqdm
+from dotenv import load_dotenv
 from osrm_client import OSRMClient
+
+# Load environment variables from .env file
+load_dotenv()
 
 def precompute_distance_matrix(pub_coords: List[Tuple[float, float]], 
                                pub_ids: List[str],
@@ -85,15 +89,25 @@ def load_distance_matrix(filename: str = 'pub_distances.pkl') -> dict:
     return data
 
 if __name__ == '__main__':
-    # Load pub data from data.json
-    with open('data.json', 'r') as f:
+    # Get paths from environment variables or use defaults
+    data_file = os.getenv('DATA_FILE', 'data.json')
+    distances_file = os.getenv('DISTANCES_FILE', 'pub_distances.pkl')
+    osrm_url = os.getenv('OSRM_URL', 'http://localhost:5005')
+
+    # Load pub data
+    if not os.path.exists(data_file):
+        print(f"Error: Data file not found: {data_file}")
+        exit(1)
+
+    with open(data_file, 'r') as f:
         pubs = json.load(f)
 
     pub_ids = [pub['id'] for pub in pubs]
     pub_coords = [(pub['longitude'], pub['latitude']) for pub in pubs]
 
-    print(f"Loaded {len(pubs)} pubs from data.json")
+    print(f"Loaded {len(pubs)} pubs from {data_file}")
+    print(f"Output will be saved to: {distances_file}")
     print("Starting pre-computation...")
     print("Make sure OSRM server is running: docker-compose up -d")
 
-    precompute_distance_matrix(pub_coords, pub_ids, 'pub_distances.pkl')
+    precompute_distance_matrix(pub_coords, pub_ids, distances_file, osrm_url)

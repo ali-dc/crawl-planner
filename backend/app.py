@@ -25,6 +25,7 @@ from osrm_client import OSRMClient
 from planner import PubCrawlPlanner
 from precompute_distances import load_distance_matrix, precompute_distance_matrix
 from parse import parse_data, load_raw_data
+from polyline_utils import encode_polyline
 
 
 class PubCrawlPlannerApp:
@@ -33,24 +34,25 @@ class PubCrawlPlannerApp:
     def __init__(
         self,
         osrm_url: str = "http://localhost:5005",
-        data_file: str = "backend/data.json",
-        distances_file: str = "backend/pub_distances.pkl",
-        raw_data_file: str = "backend/raw.data",
+        data_file: str = None,
+        distances_file: str = None,
+        raw_data_file: str = None,
     ):
         """
         Initialize the application
 
         Args:
             osrm_url: URL of the OSRM server
-            data_file: Path to parsed pubs data file
-            distances_file: Path to precomputed distances file
-            raw_data_file: Path to raw data file
+            data_file: Path to parsed pubs data file (defaults to DATA_FILE env var or data//data.json)
+            distances_file: Path to precomputed distances file (defaults to DISTANCES_FILE env var or data//pub_distances.pkl)
+            raw_data_file: Path to raw data file (defaults to RAW_DATA_FILE env var or data//raw.data)
         """
         print("Initializing PubCrawlPlannerApp...")
         self.osrm_url = osrm_url
-        self.data_file = data_file
-        self.distances_file = distances_file
-        self.raw_data_file = raw_data_file
+        # Support both docker (/app/data/) and local (data/) paths
+        self.data_file = data_file or os.getenv("DATA_FILE", "data/data.json")
+        self.distances_file = distances_file or os.getenv("DISTANCES_FILE", "data/pub_distances.pkl")
+        self.raw_data_file = raw_data_file or os.getenv("RAW_DATA_FILE", "data/raw.data")
 
         # State
         self.planner: Optional[PubCrawlPlanner] = None
@@ -319,13 +321,18 @@ class PubCrawlPlannerApp:
                 print(f"Fetching directions from {from_coords} to {to_coords}")
                 directions = self.osrm_client.get_directions(from_coords, to_coords)
                 print(f"Got directions: distance={directions['distance']}, duration={directions['duration']}")
+
+                # Encode polyline for efficient transmission
+                geometry_encoded = None
+                if directions.get("geometry") and directions["geometry"].get("coordinates"):
+                    geometry_encoded = encode_polyline(directions["geometry"]["coordinates"])
+
                 leg = RouteLegModel(
                     from_index=i,
                     to_index=i + 1,
                     distance_meters=directions["distance"],
                     duration_seconds=directions["duration"],
-                    steps=directions["steps"],
-                    geometry=directions["geometry"],
+                    geometry_encoded=geometry_encoded,
                 )
                 legs.append(leg)
             except Exception as e:
@@ -431,18 +438,18 @@ class PubCrawlPlannerApp:
 
 def create_app(
     osrm_url: str = None,
-    data_file: str = "backend/data.json",
-    distances_file: str = "backend/pub_distances.pkl",
-    raw_data_file: str = "backend/raw.data",
+    data_file: str = None,
+    distances_file: str = None,
+    raw_data_file: str = None,
 ) -> FastAPI:
     """
     Factory function to create and configure the FastAPI app
 
     Args:
         osrm_url: URL of the OSRM server (default from OSRM_URL env var or http://localhost:5005)
-        data_file: Path to parsed pubs data file
-        distances_file: Path to precomputed distances file
-        raw_data_file: Path to raw data file
+        data_file: Path to parsed pubs data file (default from DATA_FILE env var or data/data.json)
+        distances_file: Path to precomputed distances file (default from DISTANCES_FILE env var or data/pub_distances.pkl)
+        raw_data_file: Path to raw data file (default from RAW_DATA_FILE env var or data/raw.data)
 
     Returns:
         Configured FastAPI application

@@ -28,11 +28,12 @@ services:
       - osrm
     environment:
       OSRM_URL: http://osrm:5005
+      DATA_FILE: /app/data/data.json
+      DISTANCES_FILE: /app/data/pub_distances.pkl
+      RAW_DATA_FILE: /app/data/raw.data
     volumes:
-      - ./backend/data.json:/app/data.json
-      - ./backend/raw.data:/app/raw.data
+      - ./data:/app/data
       - ./init-precompute.sh:/init-precompute.sh
-      - ./backend/pub_distances.pkl:/app/pub_distances.pkl
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
@@ -48,23 +49,14 @@ services:
     container_name: crawl-planner-nginx
     ports:
       - "80:80"
-      - "443:443"
     depends_on:
       app:
         condition: service_healthy
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - ./nginx-https.conf:/app/nginx-https.conf
-      - ./letsencrypt:/etc/letsencrypt
-      - ./certbot-www:/var/www/certbot
-      - ./init-certbot.sh:/init-certbot.sh
+      - ./nginx-dev.conf:/etc/nginx/conf.d/default.conf
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -f http://localhost/health 2>/dev/null || curl -fk https://localhost/health || exit 1",
-        ]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3

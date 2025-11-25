@@ -61,8 +61,9 @@ class RouteLegModel(BaseModel):
     to_index: int = Field(..., description="Index in route (start, pub, or end)")
     distance_meters: float
     duration_seconds: float
-    steps: List[Dict] = Field(default_factory=list, description="Turn-by-turn steps")
-    geometry: Optional[Dict] = None
+    geometry_encoded: Optional[str] = Field(
+        default=None, description="Polyline-encoded geometry string for efficient transmission"
+    )
 
 
 class PlanCrawlResponse(BaseModel):

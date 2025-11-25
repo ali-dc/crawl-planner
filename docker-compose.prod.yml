@@ -24,21 +24,23 @@ services:
       - osrm
     environment:
       OSRM_URL: http://osrm:5005
+      DATA_FILE: /app/data/data.json
+      DISTANCES_FILE: /app/data/pub_distances.pkl
+      RAW_DATA_FILE: /app/data/raw.data
     volumes:
-      - ./backend:/app/backend
+      - ./data:/app/data
       - ./init-precompute.sh:/init-precompute.sh
     restart: unless-stopped
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          'python -c "import requests; requests.get(''http://localhost:8000/health'', timeout=5)" || exit 1',
+          "curl -f http://localhost:8000/health 2>/dev/null || curl -fk https://localhost:8000/health || exit 1",
         ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
-    command: sh -c "uv run app.py & sleep 2 && sh /init-precompute.sh && wait"
 
   nginx:
     image: ghcr.io/ali-dc/crawl-planner-nginx:latest

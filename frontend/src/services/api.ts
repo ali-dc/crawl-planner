@@ -31,6 +31,7 @@ export interface RouteLeg {
   geometry?: {
     coordinates: [number, number][]
   }
+  geometry_encoded?: string
 }
 
 export interface Route {

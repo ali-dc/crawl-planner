@@ -1,8 +1,23 @@
 import json
+import os
+from dotenv import load_dotenv
 
-def load_raw_data():
-    """Load raw data from raw.data file"""
-    with open("raw.data", "r", encoding="utf-8") as f:
+# Load environment variables from .env file
+load_dotenv()
+
+def load_raw_data(raw_data_file: str = None):
+    """Load raw data from raw.data file
+
+    Args:
+        raw_data_file: Path to raw data file (defaults to RAW_DATA_FILE env var or raw.data)
+
+    Returns:
+        Parsed raw data as list/dict
+    """
+    if raw_data_file is None:
+        raw_data_file = os.getenv("RAW_DATA_FILE", "raw.data")
+
+    with open(raw_data_file, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -44,12 +59,20 @@ def parse_data(data):
 
 
 if __name__ == "__main__":
+    # Get paths from environment variables or use defaults
+    raw_data_file = os.getenv("RAW_DATA_FILE", "raw.data")
+    data_file = os.getenv("DATA_FILE", "data.json")
+
     # Load and parse data
-    raw_data = load_raw_data()
+    if not os.path.exists(raw_data_file):
+        print(f"Error: Raw data file not found: {raw_data_file}")
+        exit(1)
+
+    raw_data = load_raw_data(raw_data_file)
     pubs = parse_data(raw_data)
 
     # Write results to file
-    with open("data.json", "w", encoding="utf-8") as f:
+    with open(data_file, "w", encoding="utf-8") as f:
         json.dump(pubs, f, indent=2)
 
-    print("Data parsed and saved to data.json")
+    print(f"Data parsed and saved to {data_file}")

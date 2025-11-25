@@ -19,6 +19,7 @@ COPY backend/osrm_client.py .
 COPY backend/api_schemas.py .
 COPY backend/parse.py .
 COPY backend/precompute_distances.py .
+COPY backend/polyline_utils.py .
 
 # Copy entrypoint script
 COPY entrypoint.sh .
