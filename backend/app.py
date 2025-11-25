@@ -33,9 +33,9 @@ class PubCrawlPlannerApp:
     def __init__(
         self,
         osrm_url: str = "http://localhost:5005",
-        data_file: str = "data.json",
+        data_file: str = "backend/data.json",
         distances_file: str = "backend/pub_distances.pkl",
-        raw_data_file: str = "raw.data",
+        raw_data_file: str = "backend/raw.data",
     ):
         """
         Initialize the application
@@ -431,9 +431,9 @@ class PubCrawlPlannerApp:
 
 def create_app(
     osrm_url: str = None,
-    data_file: str = "data.json",
+    data_file: str = "backend/data.json",
     distances_file: str = "backend/pub_distances.pkl",
-    raw_data_file: str = "raw.data",
+    raw_data_file: str = "backend/raw.data",
 ) -> FastAPI:
     """
     Factory function to create and configure the FastAPI app
