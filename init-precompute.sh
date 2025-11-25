@@ -12,7 +12,7 @@ for i in {1..30}; do
 done
 
 # Check if distance matrix exists
-if [ ! -f /app/pub_distances.pkl ]; then
+if [ ! -f /app/backend/pub_distances.pkl ]; then
   echo "Distance matrix not found. Triggering precomputation..."
   curl -X POST http://localhost:8000/precompute
 else

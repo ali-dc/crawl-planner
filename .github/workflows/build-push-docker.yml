@@ -6,14 +6,20 @@ on:
       - main
       - develop
     paths:
-      - 'Dockerfile'
-      - 'Dockerfile.nginx'
-      - 'backend/**'
-      - 'nginx/**'
-      - 'nginx.conf'
-      - 'nginx-https.conf'
-      - 'docker-compose.yml'
-      - '.github/workflows/build-push-docker.yml'
+      - "Dockerfile"
+      - "Dockerfile.nginx"
+      - "Dockerfile.osrm-builder"
+      - "backend/**"
+      - "nginx/**"
+      - "nginx.conf"
+      - "nginx-https.conf"
+      - "docker-compose.yml"
+      - "docker-compose.prod.yml"
+      - "entrypoint.sh"
+      - "init-precompute.sh"
+      - "init-certbot.sh"
+      - "download_map.sh"
+      - ".github/workflows/build-push-docker.yml"
   workflow_dispatch:
 
 permissions:

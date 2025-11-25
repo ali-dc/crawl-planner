@@ -4,12 +4,6 @@
 
 set -e
 
-# Clean up incorrectly-created directory from Docker volume mount
-if [ -d /app/pub_distances.pkl ]; then
-  echo "pub_distances.pkl is a directory (created incorrectly by Docker). Removing it..."
-  rm -rf /app/pub_distances.pkl
-fi
-
 # Trap SIGTERM and SIGINT to gracefully shut down
 trap_handler() {
   echo "Received shutdown signal, terminating app..."

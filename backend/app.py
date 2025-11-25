@@ -34,7 +34,7 @@ class PubCrawlPlannerApp:
         self,
         osrm_url: str = "http://localhost:5005",
         data_file: str = "data.json",
-        distances_file: str = "pub_distances.pkl",
+        distances_file: str = "backend/pub_distances.pkl",
         raw_data_file: str = "raw.data",
     ):
         """
@@ -432,7 +432,7 @@ class PubCrawlPlannerApp:
 def create_app(
     osrm_url: str = None,
     data_file: str = "data.json",
-    distances_file: str = "pub_distances.pkl",
+    distances_file: str = "backend/pub_distances.pkl",
     raw_data_file: str = "raw.data",
 ) -> FastAPI:
     """
