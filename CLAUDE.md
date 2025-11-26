@@ -564,6 +564,231 @@ To reduce payload size for direction responses, route geometries are encoded as 
 - Maintains sufficient precision for mapping (5 decimal places ≈ 1 meter accuracy)
 - Standard format compatible with MapBox and other routing services
 
+## Shareable Routes Feature
+
+Routes are automatically stored and can be shared with others via unique URLs. When a user plans a route via `POST /plan`, the route is automatically saved to the database with a unique share ID, allowing instant sharing without additional API calls.
+
+### Architecture
+
+**URL Format**: `/routes/{shareId}` (e.g., `https://example.com/routes/01kayhjx`)
+
+**Share IDs**: Generated using ULID (Universally Unique Lexicographically Sortable Identifier)
+- 8-character alphanumeric codes
+- Sortable by timestamp
+- Collision-resistant
+- URL-friendly
+
+**TTL (Time-to-Live)**: 30 days
+- Routes automatically expire after 30 days
+- Cleanup job runs every 60 minutes to remove expired routes
+- Early deletion available via DELETE endpoint
+
+### Automatic Route Storage
+
+When `/plan` endpoint is called:
+1. Route is optimized and planned
+2. Route is **automatically stored** in the database with generated `share_id`
+3. `share_id` is returned in the response
+4. Frontend immediately redirects to `/routes/{shareId}` for sharing
+
+### Database Schema
+
+**Table**: `shared_routes` (SQLite database in `/app/data/shared_routes.db`)
+
+```sql
+share_id (String, PK)         -- 8-char ULID (unique, indexed)
+created_at (DateTime)         -- Timestamp of creation
+expires_at (DateTime)         -- created_at + 30 days
+last_accessed_at (DateTime)   -- Updated each time route is accessed
+
+start_longitude (Float)       -- Start location
+start_latitude (Float)
+end_longitude (Float)         -- End location
+end_latitude (Float)
+
+route_indices (Text JSON)     -- Route as JSON array (e.g., ["start", 0, 5, 12, "end"])
+selected_pub_ids (Text JSON)  -- Pub IDs in order as JSON array
+legs_geometry_encoded (Text JSON) -- Encoded polyline geometries for each leg
+
+num_pubs (Integer)            -- Number of pubs in route
+uniformity_weight (Float)     -- Uniformity preference parameter
+total_distance_meters (Float) -- Total distance in meters
+estimated_time_minutes (Float)-- Estimated time in minutes
+```
+
+### API Endpoints
+
+**Plan a Route (Automatic Storage)**
+```http
+POST /plan
+Content-Type: application/json
+
+{
+  "start_point": {"longitude": -2.6, "latitude": 51.4},
+  "end_point": {"longitude": -2.5, "latitude": 51.5},
+  "num_pubs": 3,
+  "uniformity_weight": 0.5,
+  "include_directions": true
+}
+
+Response (200):
+{
+  "route_indices": ["start", 0, 5, 12, "end"],
+  "pubs": [...],
+  "total_distance_meters": 2150.5,
+  "estimated_time_minutes": 26.9,
+  "num_pubs": 3,
+  "legs": [...],  -- With encoded geometries if include_directions=true
+  "share_id": "01kayhjx"  -- Automatically generated and stored!
+}
+```
+The route is automatically stored in the database. Frontend redirects to `/routes/{share_id}` immediately.
+
+**Retrieve a Shared Route**
+```http
+GET /api/routes/{shareId}
+
+Response (200):
+{
+  "share_id": "01kayhjx",
+  "share_url": "https://example.com/routes/01kayhjx",
+  "created_at": "2025-11-25T10:30:00",
+  "expires_at": "2025-12-25T10:30:00",
+  "start_point": {"longitude": -2.6, "latitude": 51.4},
+  "end_point": {"longitude": -2.5, "latitude": 51.5},
+  "route_indices": ["start", 0, 5, 12, "end"],
+  "selected_pub_ids": ["pub_123", "pub_456", "pub_789"],
+  "num_pubs": 3,
+  "uniformity_weight": 0.5,
+  "total_distance_meters": 2150.5,
+  "estimated_time_minutes": 26.9,
+  "legs": [  -- Includes encoded polyline geometries
+    {
+      "from_index": 0,
+      "to_index": 1,
+      "distance_meters": 500,
+      "duration_seconds": 375,
+      "geometry_encoded": "..."
+    },
+    ...
+  ],
+  "pubs": [  -- Full pub details
+    {
+      "index": 0,
+      "pub_id": "pub_123",
+      "pub_name": "The Rose",
+      "longitude": -2.603,
+      "latitude": 51.433
+    },
+    ...
+  ]
+}
+
+Error responses:
+- 404: Route not found
+- 410: Route has expired (automatically deleted)
+```
+
+**Delete a Shared Route (Early Expiration)**
+```http
+DELETE /routes/{shareId}
+
+Response (200):
+{
+  "status": "deleted",
+  "share_id": "01kayhjx"
+}
+
+Error responses:
+- 404: Route not found
+```
+
+### Implementation Details
+
+**Automatic Route Storage in `/plan`** (`app.py:plan_crawl`):
+- After route optimization completes
+- Calls `_store_route_in_database()` with route details and encoded geometries
+- Generates unique 8-character ULID share ID
+- Stores route with 30-day expiration
+- Returns `share_id` in response (failures logged but don't block request)
+
+**Database Initialization** (`app.py:_lifespan`):
+- Creates `shared_routes` table on startup using SQLAlchemy
+- Uses SQLite at `/app/data/shared_routes.db` (mounted Docker volume for persistence)
+- Configurable via `DATABASE_URL` environment variable
+
+**Cleanup Task** (`app.py:_cleanup_expired_routes`):
+- Background asyncio task running every 60 minutes
+- Queries for routes where `expires_at < current_time`
+- Deletes expired routes from database
+- Logs number of routes deleted
+
+**Request Handling**:
+- `/plan`: Automatically stores route, returns `share_id`
+- `/api/routes/{shareId}`: Retrieves stored route, validates expiration, updates `last_accessed_at`, includes full pub details and encoded geometries
+- `/routes/{shareId}`: DELETE to remove route early
+- `/routes/{shareId}`: GET to retrieve (API endpoint, for browser navigation use `/routes/{shareId}` SPA route)
+
+### Frontend Integration
+
+**Automatic Share Flow**:
+1. User plans route using `/plan` endpoint
+2. Backend automatically stores route and returns `share_id`
+3. Frontend **immediately redirects** to `/routes/{share_id}` (no user action needed)
+4. React Router handles the `/routes/:shareId` path
+5. SharedRoute component fetches route data from `/api/routes/{shareId}`
+6. User sees populated route and can copy share link using Share button
+
+**Shared Route Display**:
+1. User visits `/routes/{shareId}` (via shared link or direct URL)
+2. Nginx serves `index.html` (SPA routing)
+3. React Router loads SharedRoute component
+4. Component fetches route data from `/api/routes/{shareId}` (Accept: application/json header)
+5. Nginx proxies API request to FastAPI
+6. Map renders the route with encoded geometries decoded from polylines
+7. Route is read-only, showing live data from database
+
+### Security & Privacy Considerations
+
+- **No Authentication**: Routes are public and accessible by URL alone
+- **Privacy by Obscurity**: Share IDs are random and difficult to guess
+- **Rate Limiting**: Optional - can be added to prevent share creation spam
+- **Data Retention**: Automatic cleanup after 30 days prevents indefinite storage
+- **No Personal Data**: Routes only store location and pub selections, no user info
+
+### Environment Variables
+
+```bash
+DATABASE_URL=sqlite:////app/data/shared_routes.db    # SQLAlchemy database URL
+```
+
+**Docker Compose Configuration**:
+- `DATABASE_URL` is set to `sqlite:////app/data/shared_routes.db` in both `docker-compose.yml` and `docker-compose.prod.yml`
+- The `/app/data` directory is mounted as a Docker volume (`./data:/app/data`) for persistence
+- Database file persists on the host machine at `./data/shared_routes.db`
+
+Examples:
+```bash
+# Use SQLite (default in Docker)
+export DATABASE_URL="sqlite:////app/data/shared_routes.db"
+
+# Use PostgreSQL
+export DATABASE_URL="postgresql://user:password@localhost/crawl_planner"
+
+# Use MySQL
+export DATABASE_URL="mysql+pymysql://user:password@localhost/crawl_planner"
+```
+
+**Inspecting the Database**:
+```bash
+# Connect to SQLite database in running container
+docker-compose exec app sqlite3 /app/data/shared_routes.db
+
+# Example queries
+SELECT share_id, created_at, num_pubs FROM shared_routes;
+SELECT share_id, expires_at FROM shared_routes WHERE expires_at > datetime('now');
+```
+
 ## Frontend Architecture
 
 The frontend is a React + TypeScript application built with Vite. It provides an interactive UI for planning pub crawl routes.

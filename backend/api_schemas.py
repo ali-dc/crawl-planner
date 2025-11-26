@@ -78,6 +78,9 @@ class PlanCrawlResponse(BaseModel):
     legs: Optional[List[RouteLegModel]] = Field(
         default=None, description="Navigation details for each leg"
     )
+    share_id: Optional[str] = Field(
+        default=None, description="Unique share ID for this route"
+    )
 
 
 class DirectionsRequest(BaseModel):
@@ -103,3 +106,48 @@ class PrecomputeStatusResponse(BaseModel):
     estimated_pubs: int
     matrix_file: str
     last_computed: Optional[str] = None
+
+
+class CreateSharedRouteRequest(BaseModel):
+    """Request to create a shareable route"""
+    start_point: CoordinateModel = Field(
+        ..., description="Starting location (longitude, latitude)"
+    )
+    end_point: CoordinateModel = Field(
+        ..., description="Ending location (longitude, latitude)"
+    )
+    route_indices: List[int | str] = Field(
+        ..., description="Route from planning response (with 'start'/'end' markers)"
+    )
+    selected_pub_ids: List[str] = Field(
+        ..., description="List of pub IDs in route order"
+    )
+    num_pubs: int = Field(..., ge=1, le=100)
+    uniformity_weight: float = Field(..., ge=0, le=1)
+    total_distance_meters: float = Field(..., gt=0)
+    estimated_time_minutes: float = Field(..., gt=0)
+    legs: Optional[List[RouteLegModel]] = Field(
+        default=None, description="Navigation details for each leg with encoded geometry"
+    )
+
+
+class SharedRouteResponse(BaseModel):
+    """Response when creating or retrieving a shared route"""
+    share_id: str = Field(..., description="Unique identifier for sharing")
+    share_url: str = Field(..., description="Full shareable URL")
+    created_at: str = Field(..., description="ISO 8601 timestamp")
+    expires_at: str = Field(..., description="ISO 8601 timestamp")
+    start_point: CoordinateModel
+    end_point: CoordinateModel
+    route_indices: List[int | str]
+    selected_pub_ids: List[str]
+    num_pubs: int
+    uniformity_weight: float
+    total_distance_meters: float
+    estimated_time_minutes: float
+    legs: Optional[List[RouteLegModel]] = Field(
+        default=None, description="Navigation details for each leg with encoded geometry"
+    )
+    pubs: Optional[List[PubInRoute]] = Field(
+        default=None, description="Full pub details (included when retrieving)"
+    )

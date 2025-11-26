@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
 import { CssBaseline, Box } from '@mui/material'
 import Map from './components/Map'
@@ -12,6 +13,7 @@ import { apiClient } from './services/api'
 import theme from './theme'
 
 function App() {
+  const navigate = useNavigate()
   const {
     state,
     setStartPoint,
@@ -72,8 +74,13 @@ function App() {
         0.5,
         true
       )
-      setRoute(route)
-      showMessage('Route planned successfully!', 'success')
+      // Redirect to the share page if a share_id was generated
+      if (route.share_id) {
+        navigate(`/routes/${route.share_id}`)
+      } else {
+        setRoute(route)
+        showMessage('Route planned successfully!', 'success')
+      }
     } catch (error) {
       console.error('Error planning route:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'

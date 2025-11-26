@@ -31,6 +31,7 @@ services:
       DATA_FILE: /app/data/data.json
       DISTANCES_FILE: /app/data/pub_distances.pkl
       RAW_DATA_FILE: /app/data/raw.data
+      DATABASE_URL: sqlite:////app/data/shared_routes.db
     volumes:
       - ./data:/app/data
       - ./init-precompute.sh:/init-precompute.sh

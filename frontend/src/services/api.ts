@@ -35,16 +35,19 @@ export interface RouteLeg {
 }
 
 export interface Route {
-  pub_indices: number[]
+  pub_indices?: number[]
+  route_indices?: (number | string)[]
   pubs: Pub[]
   total_distance_meters: number
   estimated_time_minutes: number
-  legs: RouteLeg[]
+  num_pubs?: number
+  legs?: RouteLeg[]
   directions?: {
     geometry: {
       coordinates: [number, number][]
     }
   }
+  share_id?: string
 }
 
 export interface DirectionsRequest {
@@ -61,12 +64,33 @@ export interface StatusResponse {
   progress?: number
 }
 
+export interface SharedRoute {
+  share_id: string
+  share_url: string
+  created_at: string
+  expires_at: string
+  start_point: Coordinate
+  end_point: Coordinate
+  route_indices: (number | string)[]
+  selected_pub_ids: string[]
+  num_pubs: number
+  uniformity_weight: number
+  total_distance_meters: number
+  estimated_time_minutes: number
+  legs?: RouteLeg[]
+  pubs?: Pub[]
+}
+
 // Use relative URLs when served from the same origin, otherwise use configured API_URL
 const API_URL = import.meta.env.VITE_API_URL || ''
 
 export const apiClient = {
   async get<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${API_URL}${endpoint}`)
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    })
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`)
     }
@@ -148,5 +172,10 @@ export const apiClient = {
   // Get precomputation status
   async getStatus(): Promise<StatusResponse> {
     return this.get<StatusResponse>('/status')
+  },
+
+  // Get a shared route by ID
+  async getSharedRoute(shareId: string): Promise<SharedRoute> {
+    return this.get<SharedRoute>(`/api/routes/${shareId}`)
   },
 }

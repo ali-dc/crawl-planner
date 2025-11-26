@@ -3,10 +3,14 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Optional
+import asyncio
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+from ulid import ULID
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,12 +24,16 @@ from api_schemas import (
     PrecomputeStatusResponse,
     RouteLegModel,
     PubModel,
+    CreateSharedRouteRequest,
+    SharedRouteResponse,
+    CoordinateModel,
 )
 from osrm_client import OSRMClient
 from planner import PubCrawlPlanner
 from precompute_distances import load_distance_matrix, precompute_distance_matrix
 from parse import parse_data, load_raw_data
 from polyline_utils import encode_polyline
+from models import Base, SharedRoute
 
 
 class PubCrawlPlannerApp:
@@ -37,6 +45,7 @@ class PubCrawlPlannerApp:
         data_file: str = None,
         distances_file: str = None,
         raw_data_file: str = None,
+        database_url: str = None,
     ):
         """
         Initialize the application
@@ -46,6 +55,7 @@ class PubCrawlPlannerApp:
             data_file: Path to parsed pubs data file (defaults to DATA_FILE env var or data//data.json)
             distances_file: Path to precomputed distances file (defaults to DISTANCES_FILE env var or data//pub_distances.pkl)
             raw_data_file: Path to raw data file (defaults to RAW_DATA_FILE env var or data//raw.data)
+            database_url: SQLAlchemy database URL (defaults to sqlite:///shared_routes.db)
         """
         print("Initializing PubCrawlPlannerApp...")
         self.osrm_url = osrm_url
@@ -54,11 +64,17 @@ class PubCrawlPlannerApp:
         self.distances_file = distances_file or os.getenv("DISTANCES_FILE", "data/pub_distances.pkl")
         self.raw_data_file = raw_data_file or os.getenv("RAW_DATA_FILE", "data/raw.data")
 
+        # Database configuration
+        self.database_url = database_url or os.getenv("DATABASE_URL", "sqlite:///shared_routes.db")
+        self.engine = create_engine(self.database_url, echo=False)
+        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+
         # State
         self.planner: Optional[PubCrawlPlanner] = None
         self.pubs_data: List[PubModel] = []
         self.osrm_client = OSRMClient(base_url=self.osrm_url)
         self.precompute_in_progress = False
+        self.cleanup_task: Optional[asyncio.Task] = None
 
         # Create FastAPI app with lifespan
         self.app = FastAPI(
@@ -92,11 +108,21 @@ class PubCrawlPlannerApp:
         self.app.post("/precompute", response_model=dict)(self.trigger_precomputation)
         self.app.post("/parse", response_model=dict)(self.parse_raw_data)
         self.app.get("/status", response_model=PrecomputeStatusResponse)(self.get_status)
+        # Shareable routes endpoints
+        self.app.post("/routes", response_model=SharedRouteResponse)(self.create_shared_route)
+        self.app.get("/routes/{share_id}", response_model=SharedRouteResponse)(self.get_shared_route)
+        self.app.delete("/routes/{share_id}", response_model=dict)(self.delete_shared_route)
+        # API path for shared routes (to avoid SPA routing conflicts)
+        self.app.get("/api/routes/{share_id}", response_model=SharedRouteResponse)(self.get_shared_route)
 
     @asynccontextmanager
     async def _lifespan(self, app: FastAPI):
         """Startup and shutdown logic"""
         # Startup
+        print("Initializing database...")
+        Base.metadata.create_all(bind=self.engine)
+        print("Database initialized")
+
         print("Loading pub data...")
         self.load_pubs_data()
         print(f"Loaded {len(self.pubs_data)} pubs")
@@ -109,9 +135,16 @@ class PubCrawlPlannerApp:
                 "Warning: Distance matrix not found. Run /precompute endpoint first."
             )
 
+        # Start cleanup task for expired routes
+        self.cleanup_task = asyncio.create_task(self._cleanup_expired_routes())
+        print("Started expired routes cleanup task")
+
         yield
 
         # Shutdown
+        if self.cleanup_task:
+            self.cleanup_task.cancel()
+        self.engine.dispose()
         print("Shutting down...")
 
     def load_pubs_data(self) -> bool:
@@ -232,14 +265,32 @@ class PubCrawlPlannerApp:
                     # Continue without directions rather than failing completely
                     legs = None
 
-            return PlanCrawlResponse(
+            # Automatically store the route in the database
+            share_id = None
+            try:
+                share_id = self._store_route_in_database(
+                    request=request,
+                    route_indices=result["route"],
+                    pubs_in_route=pubs_in_route,
+                    total_distance_meters=result["total_distance"],
+                    estimated_time_minutes=result["estimated_time_minutes"],
+                    legs=legs,
+                )
+            except Exception as e:
+                print(f"Warning: Failed to store route in database: {e}")
+                # Continue without storing rather than failing the entire request
+
+            response = PlanCrawlResponse(
                 route_indices=result["route"],
                 pubs=pubs_in_route,
                 total_distance_meters=result["total_distance"],
                 estimated_time_minutes=result["estimated_time_minutes"],
                 num_pubs=result["num_pubs"],
                 legs=legs,
+                share_id=share_id,
             )
+
+            return response
 
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -271,6 +322,66 @@ class PubCrawlPlannerApp:
             return legs
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error getting directions: {str(e)}")
+
+    def _store_route_in_database(
+        self,
+        request: PlanCrawlRequest,
+        route_indices: List[int | str],
+        pubs_in_route: List[PubInRoute],
+        total_distance_meters: float,
+        estimated_time_minutes: float,
+        legs: Optional[List[RouteLegModel]] = None,
+    ) -> str:
+        """
+        Store a planned route in the database for sharing
+
+        Args:
+            request: Original planning request
+            route_indices: List of pub indices with 'start' and 'end' markers
+            pubs_in_route: List of PubInRoute objects
+            total_distance_meters: Total route distance
+            estimated_time_minutes: Estimated duration
+            legs: Optional navigation legs with encoded geometry
+
+        Returns:
+            The generated share_id for the route
+        """
+        db = self.SessionLocal()
+        try:
+            # Generate ULID for the route
+            share_id = str(ULID())[:8].lower()
+
+            # Convert legs to storable format (list of geometry-encoded strings)
+            legs_geometry_encoded = None
+            if legs:
+                legs_geometry_encoded = [
+                    leg.geometry_encoded for leg in legs
+                ]
+
+            # Extract pub IDs from the route
+            selected_pub_ids = [pub.pub_id for pub in pubs_in_route]
+
+            # Create and store the route
+            shared_route = SharedRoute(
+                share_id=share_id,
+                start_longitude=request.start_point.longitude,
+                start_latitude=request.start_point.latitude,
+                end_longitude=request.end_point.longitude,
+                end_latitude=request.end_point.latitude,
+                route_indices=route_indices,
+                selected_pub_ids=selected_pub_ids,
+                num_pubs=len(pubs_in_route),
+                uniformity_weight=request.uniformity_weight,
+                total_distance_meters=total_distance_meters,
+                estimated_time_minutes=estimated_time_minutes,
+                legs_geometry_encoded=legs_geometry_encoded,
+            )
+            db.add(shared_route)
+            db.commit()
+            print(f"Stored route in database with share_id: {share_id}")
+            return share_id
+        finally:
+            db.close()
 
     def get_route_legs(
         self, route_indices: List[int | str], start_point: tuple, end_point: tuple
@@ -434,6 +545,181 @@ class PubCrawlPlannerApp:
             matrix_file=self.distances_file,
             last_computed=last_computed,
         )
+
+    async def _cleanup_expired_routes(self):
+        """Background task to clean up expired shared routes every hour"""
+        while True:
+            try:
+                await asyncio.sleep(3600)  # Run every hour
+                db = self.SessionLocal()
+                try:
+                    expired_routes = db.query(SharedRoute).filter(
+                        SharedRoute.expires_at < datetime.utcnow()
+                    ).all()
+                    for route in expired_routes:
+                        db.delete(route)
+                    if expired_routes:
+                        db.commit()
+                        print(f"Deleted {len(expired_routes)} expired routes")
+                finally:
+                    db.close()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"Error during cleanup: {e}")
+
+    async def create_shared_route(self, request: CreateSharedRouteRequest) -> SharedRouteResponse:
+        """Create a shareable route and store it in the database"""
+        try:
+            # Generate a ULID for the share ID (shorter, more URL-friendly than full ULID)
+            share_id = str(ULID())[:8].lower()
+
+            # Create the database record
+            db = self.SessionLocal()
+            try:
+                shared_route = SharedRoute(
+                    share_id=share_id,
+                    start_longitude=request.start_point.longitude,
+                    start_latitude=request.start_point.latitude,
+                    end_longitude=request.end_point.longitude,
+                    end_latitude=request.end_point.latitude,
+                    route_indices=request.route_indices,
+                    selected_pub_ids=request.selected_pub_ids,
+                    num_pubs=request.num_pubs,
+                    uniformity_weight=request.uniformity_weight,
+                    total_distance_meters=request.total_distance_meters,
+                    estimated_time_minutes=request.estimated_time_minutes,
+                )
+                db.add(shared_route)
+                db.commit()
+                db.refresh(shared_route)
+
+                # Build the response
+                return SharedRouteResponse(
+                    share_id=share_id,
+                    share_url=f"https://example.com/route/{share_id}",
+                    created_at=shared_route.created_at.isoformat(),
+                    expires_at=shared_route.expires_at.isoformat(),
+                    start_point=request.start_point,
+                    end_point=request.end_point,
+                    route_indices=request.route_indices,
+                    selected_pub_ids=request.selected_pub_ids,
+                    num_pubs=request.num_pubs,
+                    uniformity_weight=request.uniformity_weight,
+                    total_distance_meters=request.total_distance_meters,
+                    estimated_time_minutes=request.estimated_time_minutes,
+                )
+            finally:
+                db.close()
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to create shared route: {str(e)}")
+
+    async def get_shared_route(self, share_id: str) -> SharedRouteResponse:
+        """Retrieve a shared route by ID"""
+        print(f"Attempting to get shared route with ID: {share_id}")
+        try:
+            db = self.SessionLocal()
+            try:
+                route = db.query(SharedRoute).filter(SharedRoute.share_id == share_id).first()
+                print(f"Query result for share_id={share_id}: {route}")
+
+                if not route:
+                    raise HTTPException(status_code=404, detail="Route not found")
+
+                if route.is_expired():
+                    db.delete(route)
+                    db.commit()
+                    raise HTTPException(status_code=410, detail="Route has expired")
+
+                # Update last accessed timestamp
+                route.last_accessed_at = datetime.utcnow()
+                db.commit()
+
+                # Build the response with full pub details
+                pubs_in_route = []
+                for i, pub_index in enumerate(route.get_route_indices()):
+                    if pub_index == "start" or pub_index == "end":
+                        continue
+                    if 0 <= pub_index < len(self.pubs_data):
+                        pub = self.pubs_data[pub_index]
+                        pubs_in_route.append(
+                            PubInRoute(
+                                index=pub_index,
+                                pub_id=pub.id,
+                                pub_name=pub.name,
+                                longitude=pub.longitude,
+                                latitude=pub.latitude,
+                            )
+                        )
+
+                # Reconstruct legs from stored geometry
+                legs = None
+                legs_geometry = route.get_legs_geometry_encoded()
+                if legs_geometry:
+                    legs = []
+                    for i, geometry_encoded in enumerate(legs_geometry):
+                        legs.append(
+                            RouteLegModel(
+                                from_index=i,
+                                to_index=i + 1,
+                                distance_meters=0,  # Not stored, compute on demand if needed
+                                duration_seconds=0,  # Not stored, compute on demand if needed
+                                geometry_encoded=geometry_encoded,
+                            )
+                        )
+
+                return SharedRouteResponse(
+                    share_id=route.share_id,
+                    share_url=f"https://example.com/route/{route.share_id}",
+                    created_at=route.created_at.isoformat(),
+                    expires_at=route.expires_at.isoformat(),
+                    start_point=CoordinateModel(
+                        longitude=route.start_longitude,
+                        latitude=route.start_latitude,
+                    ),
+                    end_point=CoordinateModel(
+                        longitude=route.end_longitude,
+                        latitude=route.end_latitude,
+                    ),
+                    route_indices=route.get_route_indices(),
+                    selected_pub_ids=route.get_selected_pub_ids(),
+                    num_pubs=route.num_pubs,
+                    uniformity_weight=route.uniformity_weight,
+                    total_distance_meters=route.total_distance_meters,
+                    estimated_time_minutes=route.estimated_time_minutes,
+                    legs=legs,
+                    pubs=pubs_in_route,
+                )
+            finally:
+                db.close()
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve route: {str(e)}")
+
+    async def delete_shared_route(self, share_id: str) -> dict:
+        """Delete a shared route early"""
+        try:
+            db = self.SessionLocal()
+            try:
+                route = db.query(SharedRoute).filter(SharedRoute.share_id == share_id).first()
+
+                if not route:
+                    raise HTTPException(status_code=404, detail="Route not found")
+
+                db.delete(route)
+                db.commit()
+
+                return {"status": "deleted", "share_id": share_id}
+            finally:
+                db.close()
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete route: {str(e)}")
 
 
 def create_app(

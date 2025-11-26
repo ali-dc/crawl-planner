@@ -20,6 +20,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
+import ShareIcon from '@mui/icons-material/Share'
 import type { Route } from '../services/api'
 
 interface RouteStatsProps {
@@ -116,6 +117,8 @@ interface DesktopResultsProps {
   onRefresh?: () => void
   onClose?: () => void
   loading?: boolean
+  isSharedRoute?: boolean
+  onShare?: () => void
 }
 
 const DesktopResults: React.FC<DesktopResultsProps> = ({
@@ -124,6 +127,8 @@ const DesktopResults: React.FC<DesktopResultsProps> = ({
   onRefresh,
   onClose,
   loading,
+  isSharedRoute,
+  onShare,
 }) => {
   if (!visible || !route) return null
 
@@ -154,27 +159,39 @@ const DesktopResults: React.FC<DesktopResultsProps> = ({
             Your Route
           </Typography>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <IconButton
-              size="small"
-              onClick={onRefresh}
-              disabled={loading}
-              sx={{
-                color: 'primary.main',
-                animation: loading ? 'spin 1s linear infinite' : 'none',
-                '@keyframes spin': {
-                  '0%': { transform: 'rotate(0deg)' },
-                  '100%': { transform: 'rotate(360deg)' },
-                },
-              }}
-              title="Refresh with a different route"
-            >
-              <RefreshIcon />
-            </IconButton>
+            {isSharedRoute && onShare && (
+              <IconButton
+                size="small"
+                onClick={onShare}
+                sx={{ color: 'primary.main' }}
+                title="Copy share link"
+              >
+                <ShareIcon />
+              </IconButton>
+            )}
+            {!isSharedRoute && (
+              <IconButton
+                size="small"
+                onClick={onRefresh}
+                disabled={loading}
+                sx={{
+                  color: 'primary.main',
+                  animation: loading ? 'spin 1s linear infinite' : 'none',
+                  '@keyframes spin': {
+                    '0%': { transform: 'rotate(0deg)' },
+                    '100%': { transform: 'rotate(360deg)' },
+                  },
+                }}
+                title="Refresh with a different route"
+              >
+                <RefreshIcon />
+              </IconButton>
+            )}
             <IconButton
               size="small"
               onClick={onClose}
               sx={{ color: 'error.main' }}
-              title="Clear route"
+              title={isSharedRoute ? 'Back to planner' : 'Clear route'}
             >
               <CloseIcon />
             </IconButton>
@@ -193,6 +210,8 @@ interface MobileResultsProps {
   onClose?: () => void
   onRefresh?: () => void
   loading?: boolean
+  isSharedRoute?: boolean
+  onShare?: () => void
 }
 
 const MobileResults: React.FC<MobileResultsProps> = ({
@@ -201,6 +220,8 @@ const MobileResults: React.FC<MobileResultsProps> = ({
   onClose,
   onRefresh,
   loading,
+  isSharedRoute,
+  onShare,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true)
 
@@ -245,22 +266,34 @@ const MobileResults: React.FC<MobileResultsProps> = ({
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <IconButton
-            size="small"
-            onClick={onRefresh}
-            disabled={loading}
-            sx={{
-              color: 'primary.main',
-              animation: loading ? 'spin 1s linear infinite' : 'none',
-              '@keyframes spin': {
-                '0%': { transform: 'rotate(0deg)' },
-                '100%': { transform: 'rotate(360deg)' },
-              },
-            }}
-            title="Refresh with a different route"
-          >
-            <RefreshIcon />
-          </IconButton>
+          {isSharedRoute && onShare && (
+            <IconButton
+              size="small"
+              onClick={onShare}
+              sx={{ color: 'primary.main' }}
+              title="Copy share link"
+            >
+              <ShareIcon />
+            </IconButton>
+          )}
+          {!isSharedRoute && (
+            <IconButton
+              size="small"
+              onClick={onRefresh}
+              disabled={loading}
+              sx={{
+                color: 'primary.main',
+                animation: loading ? 'spin 1s linear infinite' : 'none',
+                '@keyframes spin': {
+                  '0%': { transform: 'rotate(0deg)' },
+                  '100%': { transform: 'rotate(360deg)' },
+                },
+              }}
+              title="Refresh with a different route"
+            >
+              <RefreshIcon />
+            </IconButton>
+          )}
           <IconButton
             size="small"
             onClick={() => setIsExpanded(!isExpanded)}
@@ -341,6 +374,8 @@ interface ResultsPanelProps {
   numPubs?: number
   onRefresh?: () => void
   loading?: boolean
+  isSharedRoute?: boolean
+  onShare?: () => void
 }
 
 const ResultsPanel: React.FC<ResultsPanelProps> = ({
@@ -352,6 +387,8 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
   numPubs,
   onRefresh,
   loading,
+  isSharedRoute,
+  onShare,
 }) => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -365,6 +402,8 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
       onClose={onClose}
       onRefresh={onRefresh}
       loading={loading}
+      isSharedRoute={isSharedRoute}
+      onShare={onShare}
     />
   ) : (
     <DesktopResults
@@ -373,6 +412,8 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
       onRefresh={onRefresh}
       onClose={onClose}
       loading={loading}
+      isSharedRoute={isSharedRoute}
+      onShare={onShare}
     />
   )
 }
