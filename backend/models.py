@@ -36,8 +36,8 @@ class SharedRoute(Base):
     total_distance_meters = Column(Float, nullable=False)
     estimated_time_minutes = Column(Float, nullable=False)
 
-    # Route legs with encoded geometry (stored as JSON string)
-    legs_geometry_encoded = Column(Text, nullable=True)  # JSON-serialized list of leg geometries
+    # Route legs with full data (distance, duration, geometry) (stored as JSON string)
+    legs_data = Column(Text, nullable=True)  # JSON-serialized list of leg objects with all fields
 
     def __init__(
         self,
@@ -52,7 +52,7 @@ class SharedRoute(Base):
         uniformity_weight: float,
         total_distance_meters: float,
         estimated_time_minutes: float,
-        legs_geometry_encoded: list = None,
+        legs_data: list = None,
         ttl_days: int = 30,
     ):
         self.share_id = share_id
@@ -66,7 +66,7 @@ class SharedRoute(Base):
         self.uniformity_weight = uniformity_weight
         self.total_distance_meters = total_distance_meters
         self.estimated_time_minutes = estimated_time_minutes
-        self.legs_geometry_encoded = json.dumps(legs_geometry_encoded) if legs_geometry_encoded else None
+        self.legs_data = json.dumps(legs_data) if legs_data else None
 
         # Set expiration date
         now = datetime.utcnow()
@@ -82,10 +82,10 @@ class SharedRoute(Base):
         """Deserialize selected_pub_ids from JSON"""
         return json.loads(self.selected_pub_ids)
 
-    def get_legs_geometry_encoded(self) -> list:
-        """Deserialize legs_geometry_encoded from JSON"""
-        if self.legs_geometry_encoded:
-            return json.loads(self.legs_geometry_encoded)
+    def get_legs_data(self) -> list:
+        """Deserialize legs_data from JSON"""
+        if self.legs_data:
+            return json.loads(self.legs_data)
         return None
 
     def is_expired(self) -> bool:

@@ -3,3 +3,4 @@ raw.data
 __pycache__/
 pub_distances.pkl
 .env
+shared_routes.db

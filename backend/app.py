@@ -351,11 +351,18 @@ class PubCrawlPlannerApp:
             # Generate ULID for the route
             share_id = str(ULID())[:8].lower()
 
-            # Convert legs to storable format (list of geometry-encoded strings)
-            legs_geometry_encoded = None
+            # Convert legs to storable format (complete leg data with all fields)
+            legs_data = None
             if legs:
-                legs_geometry_encoded = [
-                    leg.geometry_encoded for leg in legs
+                legs_data = [
+                    {
+                        "from_index": leg.from_index,
+                        "to_index": leg.to_index,
+                        "distance_meters": leg.distance_meters,
+                        "duration_seconds": leg.duration_seconds,
+                        "geometry_encoded": leg.geometry_encoded,
+                    }
+                    for leg in legs
                 ]
 
             # Extract pub IDs from the route
@@ -374,7 +381,7 @@ class PubCrawlPlannerApp:
                 uniformity_weight=request.uniformity_weight,
                 total_distance_meters=total_distance_meters,
                 estimated_time_minutes=estimated_time_minutes,
-                legs_geometry_encoded=legs_geometry_encoded,
+                legs_data=legs_data,
             )
             db.add(shared_route)
             db.commit()
@@ -653,19 +660,19 @@ class PubCrawlPlannerApp:
                             )
                         )
 
-                # Reconstruct legs from stored geometry
+                # Reconstruct legs from stored data
                 legs = None
-                legs_geometry = route.get_legs_geometry_encoded()
-                if legs_geometry:
+                legs_data = route.get_legs_data()
+                if legs_data:
                     legs = []
-                    for i, geometry_encoded in enumerate(legs_geometry):
+                    for leg_data in legs_data:
                         legs.append(
                             RouteLegModel(
-                                from_index=i,
-                                to_index=i + 1,
-                                distance_meters=0,  # Not stored, compute on demand if needed
-                                duration_seconds=0,  # Not stored, compute on demand if needed
-                                geometry_encoded=geometry_encoded,
+                                from_index=leg_data["from_index"],
+                                to_index=leg_data["to_index"],
+                                distance_meters=leg_data["distance_meters"],
+                                duration_seconds=leg_data["duration_seconds"],
+                                geometry_encoded=leg_data.get("geometry_encoded"),
                             )
                         )
 

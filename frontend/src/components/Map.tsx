@@ -83,18 +83,34 @@ const Map: React.FC<MapProps> = ({
       setIsMapReady(true)
     })
 
-    map.current.on('click', (e) => {
-      const { lng, lat } = e.lngLat
-      onMapClick([lng, lat])
-    })
+    // Register click handler - only process if in selection mode
+    const handleMapClickEvent = (e: maplibregl.MapLayerMouseEvent | maplibregl.MapMouseEvent) => {
+      // Only process map clicks if we're actively selecting start or end points
+      if (selectingStart || selectingEnd) {
+        const { lng, lat } = (e as maplibregl.MapMouseEvent).lngLat
+        onMapClick([lng, lat])
+      }
+    }
 
-    // Close popup when clicking on map background (after markers)
-    map.current.on('click', () => {
+    map.current.on('click', handleMapClickEvent as any)
+
+    // Add a separate listener to the map canvas to close popups on background clicks
+    const mapCanvas = map.current.getCanvas()
+    const handleCanvasClick = (e: MouseEvent) => {
+      // Check if the click was on a marker (pub-marker-* elements)
+      const target = e.target as HTMLElement
+      if (target && target.className && typeof target.className === 'string' && target.className.startsWith('pub-marker-')) {
+        return // Let the marker handle it
+      }
+
+      // Close popup when clicking on map background
       if (popupRef.current) {
         popupRef.current.remove()
         popupRef.current = null
       }
-    })
+    }
+
+    mapCanvas.addEventListener('click', handleCanvasClick)
 
     return () => {
       if (map.current) {
@@ -102,7 +118,7 @@ const Map: React.FC<MapProps> = ({
         // map.current.remove() would cause issues on re-render
       }
     }
-  }, [onMapClick])
+  }, [onMapClick, selectingStart, selectingEnd])
 
   // Manage start/end markers
   useEffect(() => {
