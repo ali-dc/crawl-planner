@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import math
 from typing import List, Tuple, Dict
 from osrm_client import OSRMClient
 
@@ -48,14 +49,27 @@ class PubCrawlPlanner:
         self.start_point = start_point
         self.end_point = end_point
 
-        # Phase 1: Select candidate pubs
+        # Phase 1: Select candidate pubs (initial geographic filter)
         candidates = self.select_candidate_pubs(start_point, end_point, num_pubs * 4)
 
-        # Phase 2: Pre-fetch distances from start/end to candidates
-        self.precompute_endpoint_distances(start_point, end_point, candidates)
+        # Phase 1b: Refine candidates using actual walking distance to corridor
+        corridor_distances = self.compute_corridor_distance_filter(start_point, end_point, candidates)
+
+        # Filter to candidates within reasonable walking distance of corridor (2.5km)
+        corridor_threshold = 2500  # meters
+        filtered_candidates = [c for c in candidates if corridor_distances.get(c, float('inf')) <= corridor_threshold]
+
+        # If too few candidates after corridor filter, relax the threshold
+        if len(filtered_candidates) < num_pubs:
+            # Sort by distance and take more
+            sorted_candidates = sorted(candidates, key=lambda c: corridor_distances.get(c, float('inf')))
+            filtered_candidates = sorted_candidates[:max(num_pubs * 3, len(sorted_candidates))]
+
+        # Phase 2: Pre-fetch distances from start/end to filtered candidates
+        self.precompute_endpoint_distances(start_point, end_point, filtered_candidates)
 
         # Phase 3: Optimize route
-        best_route = self.optimize_route(start_point, end_point, candidates, 
+        best_route = self.optimize_route(start_point, end_point, filtered_candidates,
                                          num_pubs, uniformity_weight)
 
         # Build result
@@ -63,7 +77,7 @@ class PubCrawlPlanner:
 
         return {
             'route': best_route,
-            'pub_ids': [self.pub_ids[idx] if isinstance(idx, int) else None 
+            'pub_ids': [self.pub_ids[idx] if isinstance(idx, int) else None
                        for idx in best_route],
             'total_distance': total_distance,
             'estimated_time_minutes': total_distance / 80.0,  # ~80m/min walking speed
@@ -138,8 +152,8 @@ class PubCrawlPlanner:
 
         return [pub_idx for _, _, pub_idx in top_candidates]
 
-    def precompute_endpoint_distances(self, start: Tuple[float, float], 
-                                     end: Tuple[float, float], 
+    def precompute_endpoint_distances(self, start: Tuple[float, float],
+                                     end: Tuple[float, float],
                                      candidate_pub_ids: List[int]):
         """Pre-fetch distances from start/end to all candidate pubs"""
         candidate_coords = [self.pub_coords[idx] for idx in candidate_pub_ids]
@@ -155,18 +169,138 @@ class PubCrawlPlanner:
             self.distance_cache[('start', pub_idx)] = start_distances[i]
             self.distance_cache[(pub_idx, 'end')] = end_distances[i]
 
-    def optimize_route(self, start: Tuple[float, float], 
-                      end: Tuple[float, float], 
-                      candidates: List[int], 
+    def compute_corridor_distance_filter(self, start: Tuple[float, float],
+                                        end: Tuple[float, float],
+                                        candidate_pub_ids: List[int]) -> Dict[int, float]:
+        """
+        Compute actual walking distance from each candidate to the nearest point on the corridor.
+
+        Samples points along the start→end path and finds the minimum walking distance
+        from each candidate to any corridor point.
+
+        Returns:
+            Dictionary mapping pub_idx → minimum walking distance to corridor
+        """
+        # Sample 12 points along the start→end path (including endpoints)
+        num_samples = 12
+        corridor_points = []
+        for t in np.linspace(0, 1, num_samples):
+            point = (
+                start[0] + t * (end[0] - start[0]),
+                start[1] + t * (end[1] - start[1])
+            )
+            corridor_points.append(point)
+
+        candidate_coords = [self.pub_coords[idx] for idx in candidate_pub_ids]
+
+        # Compute distances from candidates to corridor using batch queries
+        # Build a combined coordinates list: [all_candidates] + [all_corridor_points]
+        # Then query distance matrix and extract the sub-matrix
+        corridor_distances = {}
+
+        # Get distance matrix: (candidates + corridor) x (candidates + corridor)
+        combined_coords = candidate_coords + corridor_points
+        full_distance_matrix = self.osrm_client.get_distance_matrix(combined_coords)
+
+        # Extract the sub-matrix: candidates (rows) x corridor points (columns)
+        num_candidates = len(candidate_coords)
+        num_corridor = len(corridor_points)
+
+        candidates_to_corridor = full_distance_matrix[:num_candidates, num_candidates:]
+
+        # Find minimum distance to corridor for each candidate
+        for i, pub_idx in enumerate(candidate_pub_ids):
+            min_distance = candidates_to_corridor[i].min()
+            corridor_distances[pub_idx] = min_distance
+
+        return corridor_distances
+
+    def optimize_route(self, start: Tuple[float, float],
+                      end: Tuple[float, float],
+                      candidates: List[int],
                       k: int,
                       uniformity_weight: float) -> List:
         """Find best subset and route through candidates"""
-        if k <= 12:
-            return self.sample_and_optimize(start, end, candidates, k,
-                                           uniformity_weight, n_samples=1000)
+        if k <= 20:
+            return self.simulated_annealing_optimize(start, end, candidates, k,
+                                                    uniformity_weight)
         else:
-            return self.greedy_with_improvement(start, end, candidates, k, 
+            return self.greedy_with_improvement(start, end, candidates, k,
                                                uniformity_weight)
+
+    def simulated_annealing_optimize(self, start, end, candidates, k,
+                                   uniformity_weight, initial_temp=1000,
+                                   cooling_rate=0.995, min_temp=0.1) -> List:
+        """
+        Optimize route using simulated annealing for subset selection.
+
+        Explores pub subsets using temperature-guided local moves, allowing
+        uphill moves at high temperature to escape local optima.
+
+        Args:
+            initial_temp: Starting temperature
+            cooling_rate: Temperature decay per iteration (0.99-0.999)
+            min_temp: Stopping temperature threshold
+        """
+        # Initialize with random subset
+        current_subset = random.sample(candidates, k)
+        current_route = self.two_opt_with_fixed_endpoints(start, end, current_subset,
+                                                         uniformity_weight)
+        current_score = self.evaluate_route(current_route, uniformity_weight)
+
+        best_subset = current_subset[:]
+        best_route = current_route[:]
+        best_score = current_score
+
+        temperature = initial_temp
+        iterations_without_improvement = 0
+        max_iterations_without_improvement = 50
+
+        while temperature > min_temp:
+            # Local move: swap one pub for another
+            new_subset = current_subset[:]
+            i = random.randint(0, k - 1)
+            # Pick a random candidate not in current subset
+            candidates_not_in_subset = [c for c in candidates if c not in new_subset]
+            if not candidates_not_in_subset:
+                break
+            new_subset[i] = random.choice(candidates_not_in_subset)
+
+            # Optimize route for new subset
+            new_route = self.two_opt_with_fixed_endpoints(start, end, new_subset,
+                                                         uniformity_weight)
+
+            # Check forward progress constraint
+            if self.violates_forward_progress_constraint(start, end, new_route, threshold=0.10):
+                temperature *= cooling_rate
+                continue
+
+            new_score = self.evaluate_route(new_route, uniformity_weight)
+            delta = new_score - current_score
+
+            # Accept move if better, or probabilistically based on temperature
+            if delta < 0 or random.random() < math.exp(-delta / temperature):
+                current_subset = new_subset
+                current_route = new_route
+                current_score = new_score
+
+                if current_score < best_score:
+                    best_subset = current_subset[:]
+                    best_route = current_route[:]
+                    best_score = current_score
+                    iterations_without_improvement = 0
+                else:
+                    iterations_without_improvement += 1
+            else:
+                iterations_without_improvement += 1
+
+            # Early stopping if stuck
+            if iterations_without_improvement > max_iterations_without_improvement:
+                temperature = min_temp
+
+            temperature *= cooling_rate
+
+        return best_route
 
     def sample_and_optimize(self, start, end, candidates, k,
                            uniformity_weight, n_samples) -> List:
@@ -226,6 +360,86 @@ class PubCrawlPlanner:
                             route = new_route
                             improved = True
                             break
+
+                if improved:
+                    break
+
+        # Apply or-opt refinement for additional polish
+        route = self.or_opt_refine(start, end, route, uniformity_weight)
+
+        return route
+
+    def or_opt_refine(self, start, end, route, uniformity_weight, segment_size=2):
+        """
+        Or-opt local refinement: move contiguous segments to different positions.
+
+        Improves upon 2-opt by relocating 2-3 contiguous pubs to better positions.
+        O(n^3) but practical for small routes (n <= 15).
+
+        Args:
+            segment_size: Size of contiguous segment to move (try 2 and 3)
+
+        Returns:
+            Improved route
+        """
+        improved = True
+        max_iterations = 5  # Limit iterations to prevent excessive computation
+
+        iterations = 0
+        while improved and iterations < max_iterations:
+            improved = False
+            iterations += 1
+
+            # Try moving segments of size 1, 2, and 3
+            for seg_size in [1, 2, 3]:
+                if seg_size >= len(route) - 2:  # No room for segment
+                    continue
+
+                for i in range(1, len(route) - seg_size):
+                    segment = route[i:i+seg_size]
+
+                    # Try inserting at each other position
+                    for j in range(1, len(route) - seg_size + 1):
+                        # Skip if inserting in same place
+                        if abs(i - j) <= seg_size:
+                            continue
+
+                        # Adjust j if it's after the segment being removed
+                        if j > i:
+                            j_adjusted = j - seg_size
+                        else:
+                            j_adjusted = j
+
+                        # Remove segment and reinsert at new position
+                        without_segment = route[:i] + route[i+seg_size:]
+                        new_route = without_segment[:j_adjusted] + segment + without_segment[j_adjusted:]
+
+                        # Verify route is valid
+                        if len(new_route) != len(route):
+                            continue
+
+                        # Check forward progress
+                        if self.violates_forward_progress_constraint(start, end, new_route, threshold=0.10):
+                            continue
+
+                        # Evaluate improvement
+                        try:
+                            if uniformity_weight > 0:
+                                if self.evaluate_route(new_route, uniformity_weight) < self.evaluate_route(route, uniformity_weight):
+                                    route = new_route
+                                    improved = True
+                                    break
+                            else:
+                                if self.route_distance(new_route) < self.route_distance(route):
+                                    route = new_route
+                                    improved = True
+                                    break
+                        except ValueError:
+                            # Skip invalid routes
+                            continue
+
+                    if improved:
+                        break
 
                 if improved:
                     break
