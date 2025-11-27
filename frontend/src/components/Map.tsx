@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useEffect, useRef, useState } from 'react'
 import { useMediaQuery, useTheme } from '@mui/material'
 import maplibregl from 'maplibre-gl'
@@ -92,7 +93,7 @@ const Map: React.FC<MapProps> = ({
       }
     }
 
-    map.current.on('click', handleMapClickEvent as any)
+    map.current.on('click', handleMapClickEvent as unknown as (e: maplibregl.MapLayerMouseEvent) => void)
 
     // Add a separate listener to the map canvas to close popups on background clicks
     const mapCanvas = map.current.getCanvas()
@@ -166,7 +167,7 @@ const Map: React.FC<MapProps> = ({
     pubMarkersRef.current.forEach((marker) => {
       try {
         marker.remove()
-      } catch (e) {
+      } catch {
         // Already removed
       }
     })
@@ -319,7 +320,7 @@ const Map: React.FC<MapProps> = ({
         })
       }
     }
-  }, [route, isMapReady, isMobile])
+  }, [route, isMapReady, isMobile, startPoint, endPoint])
 
   return (
     <div

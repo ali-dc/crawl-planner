@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ThemeProvider } from '@mui/material/styles'
-import { CssBaseline, Box, CircularProgress, Typography, Button, Paper } from '@mui/material'
+import { CssBaseline, Box, CircularProgress, Typography, Button } from '@mui/material'
 import Map from '../components/Map'
 import Header from '../components/Header'
 import ResultsPanel from '../components/ResultsPanel'
@@ -18,13 +18,18 @@ function SharedRoute() {
   const [message, setMessage] = useState<string | null>(null)
   const [messageType, setMessageType] = useState<'success' | 'error' | null>(null)
 
+  const updateMessage = (msg: string, type: 'success' | 'error') => {
+    setMessage(msg)
+    setMessageType(type)
+  }
+
   useEffect(() => {
     const loadRoute = async () => {
       console.log('Attempting to load shared route with shareId:', shareId)
 
       if (!shareId) {
         console.error('No shareId provided')
-        setMessage('Invalid share ID', 'error')
+        updateMessage('Invalid share ID', 'error')
         setLoading(false)
         return
       }
@@ -34,12 +39,12 @@ function SharedRoute() {
         const route = await apiClient.getSharedRoute(shareId)
         console.log('Successfully loaded route:', route)
         setSharedRoute(route)
-        setMessage('Route loaded successfully!', 'success')
+        updateMessage('Route loaded successfully!', 'success')
       } catch (error) {
         console.error('Error loading shared route:', error)
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
         console.error('Full error details:', { error, errorMessage })
-        setMessage(`Error: ${errorMessage}`, 'error')
+        updateMessage(`Error: ${errorMessage}`, 'error')
       } finally {
         setLoading(false)
       }
@@ -56,7 +61,7 @@ function SharedRoute() {
     if (sharedRoute) {
       const currentUrl = window.location.href
       navigator.clipboard.writeText(currentUrl)
-      setMessage('Share URL copied to clipboard!', 'success')
+      updateMessage('Share URL copied to clipboard!', 'success')
     }
   }
 
@@ -106,7 +111,7 @@ function SharedRoute() {
           width: '100%',
         }}
       >
-        <Header startPoint={sharedRoute.start_point} endPoint={sharedRoute.end_point} />
+        <Header startPoint={[sharedRoute.start_point.longitude, sharedRoute.start_point.latitude]} endPoint={[sharedRoute.end_point.longitude, sharedRoute.end_point.latitude]} />
 
         <Box
           sx={{
@@ -140,6 +145,9 @@ function SharedRoute() {
                 num_pubs: sharedRoute.num_pubs,
                 legs: sharedRoute.legs,
               }}
+              onMapClick={() => {}}
+              selectingStart={false}
+              selectingEnd={false}
             />
           </Box>
 
@@ -153,9 +161,6 @@ function SharedRoute() {
             }}
             visible={true}
             onClose={handleBackClick}
-            startPoint={[sharedRoute.start_point.longitude, sharedRoute.start_point.latitude]}
-            endPoint={[sharedRoute.end_point.longitude, sharedRoute.end_point.latitude]}
-            numPubs={sharedRoute.num_pubs}
             onRefresh={() => {}}
             loading={false}
             isSharedRoute={true}

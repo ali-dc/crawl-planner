@@ -1,11 +1,12 @@
 import json
 import os
+from typing import Optional
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-def load_raw_data(raw_data_file: str = None):
+def load_raw_data(raw_data_file: Optional[str] = None):
     """Load raw data from raw.data file
 
     Args:

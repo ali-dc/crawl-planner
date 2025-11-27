@@ -30,8 +30,42 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  lint-and-type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.14'
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm install
+
+      - name: Run TypeScript type-check
+        run: cd frontend && npm run type-check
+
+      - name: Run ESLint
+        run: cd frontend && npm run lint
+
+      - name: Install backend dependencies
+        run: |
+          pip install uv
+          cd backend && uv sync --all-extras
+
+      - name: Run mypy type-check on backend
+        run: cd backend && uv run mypy *.py
+
   build-and-push:
     runs-on: ubuntu-latest
+    needs: lint-and-type-check
     strategy:
       matrix:
         include:

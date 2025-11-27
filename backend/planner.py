@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import math
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Union, Any, cast
 from osrm_client import OSRMClient
 
 class PubCrawlPlanner:
@@ -25,9 +25,9 @@ class PubCrawlPlanner:
         self.pub_ids = pub_ids
         self.n_pubs = len(pub_ids)
         self.osrm_client = osrm_client
-        self.distance_cache = {}
-        self.start_point = None
-        self.end_point = None
+        self.distance_cache: Dict[Any, float] = {}
+        self.start_point: Tuple[float, float] = (0.0, 0.0)
+        self.end_point: Tuple[float, float] = (0.0, 0.0)
 
     def plan_crawl(self, start_point: Tuple[float, float],
                    end_point: Tuple[float, float],
@@ -618,13 +618,13 @@ class PubCrawlPlanner:
         # Cross product / line length
         line_length = (dx * dx + dy * dy) ** 0.5
         if line_length == 0:
-            return ((px * px + py * py) ** 0.5) * 111000  # Convert to meters
+            return cast(float, ((px * px + py * py) ** 0.5) * 111000)  # Convert to meters
 
         cross = abs(dx * py - dy * px)
         perp_dist_degrees = cross / line_length
 
         # Rough conversion to meters (at mid-latitudes)
-        return perp_dist_degrees * 111000
+        return cast(float, perp_dist_degrees * 111000)
 
     def get_navigation_details(self, route: List) -> List[Dict]:
         """

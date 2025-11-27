@@ -35,7 +35,7 @@ class OSRMClient:
         if data['code'] != 'Ok':
             raise Exception(f"OSRM error: {data.get('message', 'Unknown error')}")
 
-        return data['routes'][0]['distance']
+        return data['routes'][0]['distance']  # type: ignore[no-any-return]
 
     def get_distance_matrix(self, coordinates: List[Tuple[float, float]]) -> np.ndarray:
         """
@@ -116,7 +116,7 @@ class OSRMClient:
         matrix = self.get_distance_matrix(all_coords)
 
         # Return first row (distances from origin to all destinations)
-        return matrix[0, 1:].tolist()
+        return matrix[0, 1:].tolist()  # type: ignore[no-any-return]
 
     def get_distances_to_point(self, origins: List[Tuple[float, float]], 
                                destination: Tuple[float, float]) -> List[float]:
@@ -134,4 +134,4 @@ class OSRMClient:
         matrix = self.get_distance_matrix(all_coords)
 
         # Return last column (distances from all origins to destination)
-        return matrix[:-1, -1].tolist()
+        return matrix[:-1, -1].tolist()  # type: ignore[no-any-return]

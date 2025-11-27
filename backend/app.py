@@ -42,10 +42,10 @@ class PubCrawlPlannerApp:
     def __init__(
         self,
         osrm_url: str = "http://localhost:5005",
-        data_file: str = None,
-        distances_file: str = None,
-        raw_data_file: str = None,
-        database_url: str = None,
+        data_file: Optional[str] = None,
+        distances_file: Optional[str] = None,
+        raw_data_file: Optional[str] = None,
+        database_url: Optional[str] = None,
     ):
         """
         Initialize the application
@@ -422,7 +422,7 @@ class PubCrawlPlannerApp:
                     self.pubs_data[from_idx].latitude,
                 )
             else:
-                from_coords = from_idx
+                from_coords = from_idx  # type: ignore[assignment]
 
             if to_idx == "end":
                 to_coords = end_point
@@ -432,7 +432,7 @@ class PubCrawlPlannerApp:
                     self.pubs_data[to_idx].latitude,
                 )
             else:
-                to_coords = to_idx
+                to_coords = to_idx  # type: ignore[assignment]
 
             # Get directions from OSRM
             try:
@@ -640,7 +640,7 @@ class PubCrawlPlannerApp:
                     raise HTTPException(status_code=410, detail="Route has expired")
 
                 # Update last accessed timestamp
-                route.last_accessed_at = datetime.utcnow()
+                route.last_accessed_at = datetime.utcnow()  # type: ignore[assignment]
                 db.commit()
 
                 # Build the response with full pub details
@@ -677,24 +677,24 @@ class PubCrawlPlannerApp:
                         )
 
                 return SharedRouteResponse(
-                    share_id=route.share_id,
+                    share_id=route.share_id,  # type: ignore[arg-type]
                     share_url=f"https://example.com/route/{route.share_id}",
                     created_at=route.created_at.isoformat(),
                     expires_at=route.expires_at.isoformat(),
                     start_point=CoordinateModel(
-                        longitude=route.start_longitude,
-                        latitude=route.start_latitude,
+                        longitude=route.start_longitude,  # type: ignore[arg-type]
+                        latitude=route.start_latitude,  # type: ignore[arg-type]
                     ),
                     end_point=CoordinateModel(
-                        longitude=route.end_longitude,
-                        latitude=route.end_latitude,
+                        longitude=route.end_longitude,  # type: ignore[arg-type]
+                        latitude=route.end_latitude,  # type: ignore[arg-type]
                     ),
                     route_indices=route.get_route_indices(),
                     selected_pub_ids=route.get_selected_pub_ids(),
-                    num_pubs=route.num_pubs,
-                    uniformity_weight=route.uniformity_weight,
-                    total_distance_meters=route.total_distance_meters,
-                    estimated_time_minutes=route.estimated_time_minutes,
+                    num_pubs=route.num_pubs,  # type: ignore[arg-type]
+                    uniformity_weight=route.uniformity_weight,  # type: ignore[arg-type]
+                    total_distance_meters=route.total_distance_meters,  # type: ignore[arg-type]
+                    estimated_time_minutes=route.estimated_time_minutes,  # type: ignore[arg-type]
                     legs=legs,
                     pubs=pubs_in_route,
                 )
@@ -730,10 +730,10 @@ class PubCrawlPlannerApp:
 
 
 def create_app(
-    osrm_url: str = None,
-    data_file: str = None,
-    distances_file: str = None,
-    raw_data_file: str = None,
+    osrm_url: Optional[str] = None,
+    data_file: Optional[str] = None,
+    distances_file: Optional[str] = None,
+    raw_data_file: Optional[str] = None,
 ) -> FastAPI:
     """
     Factory function to create and configure the FastAPI app

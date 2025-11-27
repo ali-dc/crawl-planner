@@ -16,3 +16,10 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "python-ulid>=2.0.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.7.0",
+    "types-requests>=2.31.0",
+    "types-tqdm>=4.66.0",
+]

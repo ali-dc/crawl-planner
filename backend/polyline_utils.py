@@ -19,7 +19,7 @@ def encode_polyline(coordinates: list[tuple[float, float]]) -> str:
     # polyline library expects (lat, lng) order, but we use (lng, lat)
     # So we need to reverse each coordinate pair
     lat_lng_coords = [(lat, lng) for lng, lat in coordinates]
-    return polyline.encode(lat_lng_coords, precision=5)
+    return polyline.encode(lat_lng_coords, precision=5)  # type: ignore[no-any-return]
 
 
 def decode_polyline(encoded: str) -> list[tuple[float, float]]:

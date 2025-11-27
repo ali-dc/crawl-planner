@@ -85,7 +85,7 @@ def precompute_distance_matrix(pub_coords: List[Tuple[float, float]],
 def load_distance_matrix(filename: str = 'pub_distances.pkl') -> dict:
     """Load pre-computed distance matrix"""
     with open(filename, 'rb') as f:
-        data = pickle.load(f)
+        data = pickle.load(f)  # type: ignore[no-any-return]
     return data
 
 if __name__ == '__main__':
