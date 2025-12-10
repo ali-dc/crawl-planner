@@ -93,6 +93,25 @@ export interface SharedRoute {
   pubs?: Pub[]
 }
 
+export interface RouteEstimate {
+  total_distance_meters: number
+  estimated_time_minutes: number
+}
+
+export interface AlternativePub {
+  pub_id: string
+  pub_name: string
+  longitude: number
+  latitude: number
+  added_distance_meters: number
+  reason: string
+}
+
+export interface AlternativePubsResponse {
+  alternatives: AlternativePub[]
+  route_without_pub: RouteEstimate
+}
+
 // Use relative URLs when served from the same origin, otherwise use configured API_URL
 const API_URL = import.meta.env.VITE_API_URL || ''
 
@@ -194,5 +213,45 @@ export const apiClient = {
   // Save a route to get a shareable link
   async saveRoute(request: CreateSharedRouteRequest): Promise<SharedRoute> {
     return this.post<SharedRoute>('/api/routes', request)
+  },
+
+  // Get alternative pubs when removing one from the route
+  async getAlternativePubs(
+    startPoint: Coordinate,
+    endPoint: Coordinate,
+    currentRouteIndices: (number | string)[],
+    removedPubIndex: number,
+    excludedPubIds: string[] = []
+  ): Promise<AlternativePubsResponse> {
+    return this.post<AlternativePubsResponse>('/api/routes/alternatives', {
+      start_point: startPoint,
+      end_point: endPoint,
+      current_route_indices: currentRouteIndices,
+      removed_pub_index: removedPubIndex,
+      excluded_pub_ids: excludedPubIds,
+    })
+  },
+
+  // Replace a pub in an existing route
+  async replacePubInRoute(
+    startPoint: Coordinate,
+    endPoint: Coordinate,
+    currentRouteIndices: (number | string)[],
+    removedPubIndex: number,
+    replacementPubId: string | null,
+    numPubs: number,
+    uniformityWeight: number,
+    includeDirections: boolean
+  ): Promise<Route> {
+    return this.post<Route>('/api/routes/replace', {
+      start_point: startPoint,
+      end_point: endPoint,
+      current_route_indices: currentRouteIndices,
+      removed_pub_index: removedPubIndex,
+      replacement_pub_id: replacementPubId,
+      num_pubs: numPubs,
+      uniformity_weight: uniformityWeight,
+      include_directions: includeDirections,
+    })
   },
 }

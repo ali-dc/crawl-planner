@@ -44,6 +44,9 @@ class PlanCrawlRequest(BaseModel):
     include_directions: bool = Field(
         default=True, description="Include turn-by-turn directions in response"
     )
+    excluded_pub_ids: Optional[List[str]] = Field(
+        default=None, description="Pub IDs to exclude from planning"
+    )
 
 
 class PubInRoute(BaseModel):
@@ -150,4 +153,71 @@ class SharedRouteResponse(BaseModel):
     )
     pubs: Optional[List[PubInRoute]] = Field(
         default=None, description="Full pub details (included when retrieving)"
+    )
+
+
+class RouteEstimate(BaseModel):
+    """Quick estimate of route metrics"""
+    total_distance_meters: float
+    estimated_time_minutes: float
+
+
+class AlternativePub(BaseModel):
+    """A suggested alternative pub"""
+    pub_id: str
+    pub_name: str
+    longitude: float
+    latitude: float
+    added_distance_meters: float = Field(
+        ..., description="How much this adds vs. skipping the pub"
+    )
+    reason: str = Field(
+        ..., description="e.g., 'Nearby', 'On path', 'Popular'"
+    )
+
+
+class AlternativePubsRequest(BaseModel):
+    """Request for alternative pub suggestions"""
+    start_point: CoordinateModel
+    end_point: CoordinateModel
+    current_route_indices: List[int | str] = Field(
+        ..., description="Current route with 'start' and 'end' markers"
+    )
+    removed_pub_index: int = Field(
+        ..., description="Index in current_route_indices of pub being removed"
+    )
+    excluded_pub_ids: List[str] = Field(
+        default_factory=list, description="Already excluded pub IDs"
+    )
+
+
+class AlternativePubsResponse(BaseModel):
+    """Response with alternative pub suggestions"""
+    alternatives: List[AlternativePub]
+    route_without_pub: RouteEstimate = Field(
+        ..., description="What the route looks like if we just remove the pub"
+    )
+
+
+class ReplacePubRequest(BaseModel):
+    """Request to replace a pub in an existing route"""
+    start_point: CoordinateModel
+    end_point: CoordinateModel
+    current_route_indices: List[int | str] = Field(
+        ..., description="Current route with 'start' and 'end' markers"
+    )
+    removed_pub_index: int = Field(
+        ..., description="Index in route being removed"
+    )
+    replacement_pub_id: Optional[str] = Field(
+        default=None, description="None = just remove, don't replace"
+    )
+    num_pubs: int = Field(
+        ..., ge=1, le=100, description="Number of pubs in the route"
+    )
+    uniformity_weight: float = Field(
+        default=0.5, ge=0, le=1, description="Higher = more uniform spacing"
+    )
+    include_directions: bool = Field(
+        default=True, description="Include turn-by-turn directions in response"
     )

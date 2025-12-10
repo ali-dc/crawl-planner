@@ -27,6 +27,11 @@ from api_schemas import (
     CreateSharedRouteRequest,
     SharedRouteResponse,
     CoordinateModel,
+    AlternativePubsRequest,
+    AlternativePubsResponse,
+    AlternativePub,
+    RouteEstimate,
+    ReplacePubRequest,
 )
 from osrm_client import OSRMClient
 from planner import PubCrawlPlanner
@@ -112,6 +117,9 @@ class PubCrawlPlannerApp:
         self.app.post("/api/routes", response_model=SharedRouteResponse)(self.create_shared_route)
         self.app.get("/api/routes/{share_id}", response_model=SharedRouteResponse)(self.get_shared_route)
         self.app.delete("/api/routes/{share_id}", response_model=dict)(self.delete_shared_route)
+        # Pub removal and replacement endpoints
+        self.app.post("/api/routes/alternatives", response_model=AlternativePubsResponse)(self.get_alternative_pubs)
+        self.app.post("/api/routes/replace", response_model=PlanCrawlResponse)(self.replace_pub_in_route)
 
     @asynccontextmanager
     async def _lifespan(self, app: FastAPI):
@@ -229,6 +237,7 @@ class PubCrawlPlannerApp:
                 end_point=request.end_point.tuple,
                 num_pubs=request.num_pubs,
                 uniformity_weight=request.uniformity_weight,
+                excluded_pub_ids=request.excluded_pub_ids,
             )
 
             # Build pub information list
@@ -726,6 +735,198 @@ class PubCrawlPlannerApp:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to delete route: {str(e)}")
+
+    async def get_alternative_pubs(self, request: AlternativePubsRequest) -> AlternativePubsResponse:
+        """
+        Get suggested alternative pubs when user wants to remove one
+
+        1. Calculate route metrics without the removed pub
+        2. Find nearby candidate pubs that would fit well
+        3. Score and return top 5 alternatives
+        """
+        if self.planner is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Distance matrix not loaded. Run /precompute endpoint first.",
+            )
+
+        try:
+            # Calculate route without the removed pub
+            route_without_pub = list(request.current_route_indices)
+            removed_pub_idx = route_without_pub.pop(request.removed_pub_index)
+
+            # Calculate distance for route without the pub
+            total_distance_without = 0.0
+            for i in range(len(route_without_pub) - 1):
+                from_idx = route_without_pub[i]
+                to_idx = route_without_pub[i + 1]
+
+                # Get distance between points
+                if from_idx == 'start':
+                    if to_idx == 'end':
+                        total_distance_without += self.osrm_client.get_walking_distance(
+                            request.start_point.tuple, request.end_point.tuple
+                        )
+                    elif isinstance(to_idx, int):
+                        total_distance_without += self.osrm_client.get_walking_distance(
+                            request.start_point.tuple, (self.pubs_data[to_idx].longitude, self.pubs_data[to_idx].latitude)
+                        )
+                elif to_idx == 'end':
+                    if isinstance(from_idx, int):
+                        total_distance_without += self.osrm_client.get_walking_distance(
+                            (self.pubs_data[from_idx].longitude, self.pubs_data[from_idx].latitude),
+                            request.end_point.tuple
+                        )
+                elif isinstance(from_idx, int) and isinstance(to_idx, int):
+                    total_distance_without += self.planner.distance_matrix[from_idx][to_idx]
+
+            route_estimate = RouteEstimate(
+                total_distance_meters=total_distance_without,
+                estimated_time_minutes=total_distance_without / 80.0
+            )
+
+            # Find alternative pubs
+            # Add removed pub to excluded list
+            excluded_ids = list(request.excluded_pub_ids)
+            if isinstance(removed_pub_idx, int):
+                removed_pub_id = self.pubs_data[removed_pub_idx].id
+                excluded_ids.append(removed_pub_id)
+
+            alternatives_data = self.planner.find_alternative_pubs(
+                start_point=request.start_point.tuple,
+                end_point=request.end_point.tuple,
+                current_route=request.current_route_indices,
+                removed_index=request.removed_pub_index,
+                excluded_ids=excluded_ids,
+                num_alternatives=5
+            )
+
+            # Convert to response format
+            alternatives = []
+            for alt in alternatives_data:
+                pub_idx = alt['pub_idx']
+                pub = self.pubs_data[pub_idx]
+                alternatives.append(AlternativePub(
+                    pub_id=pub.id,
+                    pub_name=pub.name,
+                    longitude=pub.longitude,
+                    latitude=pub.latitude,
+                    added_distance_meters=alt['added_distance'],
+                    reason=alt['reason']
+                ))
+
+            return AlternativePubsResponse(
+                alternatives=alternatives,
+                route_without_pub=route_estimate
+            )
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Error getting alternatives: {str(e)}")
+
+    async def replace_pub_in_route(self, request: ReplacePubRequest) -> PlanCrawlResponse:
+        """
+        Replace a pub in an existing route
+
+        1. Remove the specified pub from the route
+        2. If replacement_pub_id is provided, add it to the route
+        3. Re-optimize the route ordering
+        4. Recalculate distances and directions
+        5. Return updated route
+        """
+        if self.planner is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Distance matrix not loaded. Run /precompute endpoint first.",
+            )
+
+        try:
+            # Build the new route
+            new_route_indices = list(request.current_route_indices)
+            removed_pub_idx = new_route_indices.pop(request.removed_pub_index)
+
+            # If replacing with a new pub
+            if request.replacement_pub_id:
+                # Find the pub index for the replacement
+                replacement_pub_idx = None
+                for i, pub in enumerate(self.pubs_data):
+                    if pub.id == request.replacement_pub_id:
+                        replacement_pub_idx = i
+                        break
+
+                if replacement_pub_idx is None:
+                    raise HTTPException(status_code=404, detail=f"Replacement pub {request.replacement_pub_id} not found")
+
+                # Insert at the same position
+                new_route_indices.insert(request.removed_pub_index, replacement_pub_idx)
+
+            # Extract just the pub indices (no 'start' or 'end')
+            pub_indices = [idx for idx in new_route_indices if isinstance(idx, int)]
+
+            # Precompute distances from start/end to all pubs in the route
+            # This is required for the optimization methods
+            self.planner.precompute_endpoint_distances(
+                request.start_point.tuple,
+                request.end_point.tuple,
+                pub_indices
+            )
+
+            # Re-optimize the ordering using 2-opt
+            optimized_route = self.planner.two_opt_with_fixed_endpoints(
+                start=request.start_point.tuple,
+                end=request.end_point.tuple,
+                pub_ids=pub_indices,
+                uniformity_weight=request.uniformity_weight
+            )
+
+            # Calculate total distance
+            total_distance = self.planner.route_distance(optimized_route)
+
+            # Build pub information list
+            pubs_in_route = []
+            for i, pub_idx in enumerate(optimized_route):
+                if isinstance(pub_idx, int):
+                    pub = self.pubs_data[pub_idx]
+                    pubs_in_route.append(
+                        PubInRoute(
+                            index=i,
+                            pub_id=pub.id,
+                            pub_name=pub.name,
+                            longitude=pub.longitude,
+                            latitude=pub.latitude,
+                        )
+                    )
+
+            # Get directions if requested
+            legs = None
+            if request.include_directions:
+                try:
+                    legs = self.get_route_legs(
+                        optimized_route,
+                        request.start_point.tuple,
+                        request.end_point.tuple,
+                    )
+                except Exception as e:
+                    print(f"Warning: Failed to get directions: {e}")
+                    legs = None
+
+            return PlanCrawlResponse(
+                route_indices=optimized_route,
+                pubs=pubs_in_route,
+                total_distance_meters=total_distance,
+                estimated_time_minutes=total_distance / 80.0,
+                num_pubs=len(pubs_in_route),
+                legs=legs,
+                share_id=None,
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Error replacing pub: {str(e)}")
 
 
 def create_app(

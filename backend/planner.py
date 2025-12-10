@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import math
-from typing import List, Tuple, Dict, Union, Any, cast
+from typing import List, Tuple, Dict, Union, Any, cast, Optional
 from osrm_client import OSRMClient
 
 class PubCrawlPlanner:
@@ -32,7 +32,8 @@ class PubCrawlPlanner:
     def plan_crawl(self, start_point: Tuple[float, float],
                    end_point: Tuple[float, float],
                    num_pubs: int,
-                   uniformity_weight: float = 0.35) -> Dict:
+                   uniformity_weight: float = 0.35,
+                   excluded_pub_ids: Optional[List[str]] = None) -> Dict:
         """
         Generate optimal pub crawl route
 
@@ -41,6 +42,7 @@ class PubCrawlPlanner:
             end_point: (longitude, latitude) ending coordinates
             num_pubs: number of pubs to visit
             uniformity_weight: 0-1, higher = more uniform spacing
+            excluded_pub_ids: Optional list of pub IDs to exclude from planning
 
         Returns:
             Dictionary with route details
@@ -50,7 +52,7 @@ class PubCrawlPlanner:
         self.end_point = end_point
 
         # Phase 1: Select candidate pubs (initial geographic filter)
-        candidates = self.select_candidate_pubs(start_point, end_point, num_pubs * 4)
+        candidates = self.select_candidate_pubs(start_point, end_point, num_pubs * 4, excluded_pub_ids)
 
         # Phase 1b: Refine candidates using actual walking distance to corridor
         corridor_distances = self.compute_corridor_distance_filter(start_point, end_point, candidates)
@@ -86,15 +88,28 @@ class PubCrawlPlanner:
 
     def select_candidate_pubs(self, start: Tuple[float, float],
                              end: Tuple[float, float],
-                             num_candidates: int) -> List[int]:
+                             num_candidates: int,
+                             excluded_pub_ids: Optional[List[str]] = None) -> List[int]:
         """Select pubs roughly along corridor from start to end, sorted by progress
 
         Strongly prioritizes pubs that are on or near the direct path from start to end.
         Rejects pubs that are egregiously far outside the main corridor.
         """
+        # Convert excluded pub IDs to set of indices for efficient lookup
+        excluded_indices = set()
+        if excluded_pub_ids:
+            for pub_id in excluded_pub_ids:
+                if pub_id in self.pub_ids:
+                    excluded_indices.add(self.pub_ids.index(pub_id))
+
         candidates_with_score = []
 
         for pub_idx in range(self.n_pubs):
+            # Skip excluded pubs
+            if pub_idx in excluded_indices:
+                continue
+
+
             coords = self.pub_coords[pub_idx]
 
             # Get unclamped progress to detect pubs beyond the endpoint
@@ -662,3 +677,134 @@ class PubCrawlPlanner:
             navigation.append(leg)
 
         return navigation
+
+    def find_alternative_pubs(
+        self,
+        start_point: Tuple[float, float],
+        end_point: Tuple[float, float],
+        current_route: List[int | str],
+        removed_index: int,
+        excluded_ids: List[str],
+        num_alternatives: int = 5
+    ) -> List[Dict]:
+        """
+        Find alternative pubs to replace a removed pub
+
+        Strategy:
+        1. Get the pub before and after the removed pub
+        2. Find candidates near the removed pub's position on the path
+        3. Score by: distance from neighbors + path alignment
+        4. Return top N alternatives with distance impact
+
+        Args:
+            start_point: Starting coordinates
+            end_point: Ending coordinates
+            current_route: Current route with 'start' and 'end' markers
+            removed_index: Index of pub being removed in the route
+            excluded_ids: Pub IDs to exclude (including removed pub and already excluded)
+            num_alternatives: Number of alternatives to return
+
+        Returns:
+            List of alternative pub dictionaries with pub_id, name, coords, added_distance, reason
+        """
+        # Get the removed pub's position in the route
+        removed_pub_idx = current_route[removed_index]
+        if not isinstance(removed_pub_idx, int):
+            return []  # Can't replace start/end markers
+
+        removed_coords = self.pub_coords[removed_pub_idx]
+        removed_progress = self.project_onto_line(start_point, end_point, removed_coords)
+
+        # Get neighbors (pub before and after)
+        prev_idx = current_route[removed_index - 1] if removed_index > 0 else 'start'
+        next_idx = current_route[removed_index + 1] if removed_index < len(current_route) - 1 else 'end'
+
+        # Convert excluded IDs to indices
+        excluded_indices = set()
+        if excluded_ids:
+            for pub_id in excluded_ids:
+                if pub_id in self.pub_ids:
+                    excluded_indices.add(self.pub_ids.index(pub_id))
+
+        # Find candidate pubs near the removed pub's position
+        candidates_with_score = []
+
+        for pub_idx in range(self.n_pubs):
+            # Skip excluded pubs and the removed pub itself
+            if pub_idx in excluded_indices or pub_idx == removed_pub_idx:
+                continue
+
+            # Skip pubs already in the route
+            if pub_idx in current_route:
+                continue
+
+            coords = self.pub_coords[pub_idx]
+            progress = self.project_onto_line(start_point, end_point, coords)
+
+            # Calculate perpendicular distance from corridor
+            perp_dist = self.perpendicular_distance(start_point, end_point, coords)
+
+            # Score based on:
+            # 1. How close the pub is to the removed pub's progress (prefer similar position on path)
+            # 2. Perpendicular distance from the corridor (prefer pubs on the path)
+            # 3. Distance from neighbors
+
+            progress_diff = abs(progress - removed_progress)
+
+            # Get distances from neighbors
+            try:
+                if prev_idx == 'start':
+                    dist_from_prev = self.osrm_client.get_walking_distance(start_point, coords)
+                else:
+                    dist_from_prev = self.distance_matrix[prev_idx][pub_idx]
+
+                if next_idx == 'end':
+                    dist_to_next = self.osrm_client.get_walking_distance(coords, end_point)
+                else:
+                    dist_to_next = self.distance_matrix[pub_idx][next_idx]
+
+                # Calculate added distance (compared to going directly between neighbors)
+                if prev_idx == 'start' and next_idx == 'end':
+                    direct_distance = self.osrm_client.get_walking_distance(start_point, end_point)
+                elif prev_idx == 'start':
+                    direct_distance = self.osrm_client.get_walking_distance(start_point, self.pub_coords[next_idx])
+                elif next_idx == 'end':
+                    direct_distance = self.osrm_client.get_walking_distance(self.pub_coords[prev_idx], end_point)
+                else:
+                    direct_distance = self.distance_matrix[prev_idx][next_idx]
+
+                added_distance = (dist_from_prev + dist_to_next) - direct_distance
+
+                # Score: prioritize minimal added distance and good path alignment
+                # Lower score = better
+                score = (
+                    added_distance * 1.0 +  # Added distance penalty
+                    progress_diff * 5000 +  # Progress difference penalty
+                    perp_dist * 0.5         # Perpendicular distance penalty
+                )
+
+                # Determine reason
+                if perp_dist < 500:
+                    reason = "On path"
+                elif added_distance < 300:
+                    reason = "Nearby"
+                else:
+                    reason = "Alternative"
+
+                candidates_with_score.append({
+                    'pub_idx': pub_idx,
+                    'pub_id': self.pub_ids[pub_idx],
+                    'coords': coords,
+                    'added_distance': added_distance,
+                    'score': score,
+                    'reason': reason
+                })
+
+            except Exception as e:
+                # Skip pubs where distance calculation fails
+                print(f"Error calculating distance for pub {pub_idx}: {e}")
+                continue
+
+        # Sort by score (best first) and return top N
+        candidates_with_score.sort(key=lambda x: x['score'])
+        return candidates_with_score[:num_alternatives]

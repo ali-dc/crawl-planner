@@ -21,7 +21,8 @@ import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import ShareIcon from '@mui/icons-material/Share'
 import SaveIcon from '@mui/icons-material/Save'
-import type { Route } from '../services/api'
+import DeleteIcon from '@mui/icons-material/Delete'
+import type { Route, Pub } from '../services/api'
 
 interface RouteStatsProps {
   distance: string
@@ -55,9 +56,11 @@ const RouteStats: React.FC<RouteStatsProps> = ({ distance, time }) => (
 
 interface PubsListProps {
   route: Route
+  onRemovePub?: (index: number, pub: Pub) => void
+  isSharedRoute?: boolean
 }
 
-const PubsList: React.FC<PubsListProps> = ({ route }) => (
+const PubsList: React.FC<PubsListProps> = ({ route, onRemovePub, isSharedRoute }) => (
   <List sx={{ width: '100%' }}>
     {route.pubs.map((pub, index) => {
       let legInfo = ''
@@ -78,6 +81,19 @@ const PubsList: React.FC<PubsListProps> = ({ route }) => (
                 backgroundColor: 'action.hover',
               },
             }}
+            secondaryAction={
+              !isSharedRoute && onRemovePub && (
+                <IconButton
+                  edge="end"
+                  onClick={() => onRemovePub(index, pub)}
+                  title="Remove this pub"
+                  size="small"
+                  sx={{ color: 'error.main' }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              )
+            }
           >
             <ListItemIcon>
               <Box
@@ -121,6 +137,7 @@ interface DesktopResultsProps {
   onShare?: () => void
   onSave?: () => void
   isSaved?: boolean
+  onRemovePub?: (index: number, pub: Pub) => void
 }
 
 const DesktopResults: React.FC<DesktopResultsProps> = ({
@@ -133,6 +150,7 @@ const DesktopResults: React.FC<DesktopResultsProps> = ({
   onShare,
   onSave,
   isSaved,
+  onRemovePub,
 }) => {
   if (!visible || !route) return null
 
@@ -213,7 +231,7 @@ const DesktopResults: React.FC<DesktopResultsProps> = ({
           </Box>
         </Box>
         <RouteStats distance={distance} time={time} />
-        <PubsList route={route} />
+        <PubsList route={route} onRemovePub={onRemovePub} isSharedRoute={isSharedRoute} />
       </Box>
     </Paper>
   )
@@ -229,6 +247,7 @@ interface MobileResultsProps {
   onShare?: () => void
   onSave?: () => void
   isSaved?: boolean
+  onRemovePub?: (index: number, pub: Pub) => void
 }
 
 const MobileResults: React.FC<MobileResultsProps> = ({
@@ -241,6 +260,7 @@ const MobileResults: React.FC<MobileResultsProps> = ({
   onShare,
   onSave,
   isSaved,
+  onRemovePub,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true)
 
@@ -351,7 +371,7 @@ const MobileResults: React.FC<MobileResultsProps> = ({
           }}
         >
           <RouteStats distance={distance} time={time} />
-          <PubsList route={route} />
+          <PubsList route={route} onRemovePub={onRemovePub} isSharedRoute={isSharedRoute} />
         </Box>
       )}
 
@@ -408,6 +428,7 @@ interface ResultsPanelProps {
   onShare?: () => void
   onSave?: () => void
   isSaved?: boolean
+  onRemovePub?: (index: number, pub: Pub) => void
 }
 
 const ResultsPanel: React.FC<ResultsPanelProps> = ({
@@ -420,6 +441,7 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
   onShare,
   onSave,
   isSaved,
+  onRemovePub,
 }) => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -437,6 +459,7 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
       onShare={onShare}
       onSave={onSave}
       isSaved={isSaved}
+      onRemovePub={onRemovePub}
     />
   ) : (
     <DesktopResults
@@ -449,6 +472,7 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
       onShare={onShare}
       onSave={onSave}
       isSaved={isSaved}
+      onRemovePub={onRemovePub}
     />
   )
 }
