@@ -5,7 +5,6 @@ import {
   DialogActions,
   Button,
   List,
-  ListItem,
   ListItemButton,
   ListItemText,
   Typography,
@@ -54,7 +53,7 @@ const PubRemovalDialog: React.FC<PubRemovalDialogProps> = ({
     >
       <DialogTitle sx={{ pb: 1 }}>
         <Typography variant="h6" sx={{ fontWeight: 600 }}>
-          Remove "{pub.pub_name}"?
+          Remove &quot;{pub.pub_name}&quot;?
         </Typography>
       </DialogTitle>
 
@@ -131,8 +130,6 @@ const PubRemovalDialog: React.FC<PubRemovalDialogProps> = ({
             {routeWithoutPub && (
               <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
                 Route will be {(routeWithoutPub.total_distance_meters / 1000).toFixed(2)} km
-                {' (saves '}
-                {Math.abs(routeWithoutPub.total_distance_meters / 1000).toFixed(2)} km)
               </Typography>
             )}
           </>
