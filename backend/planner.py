@@ -9,7 +9,7 @@ class PubCrawlPlanner:
 
     def __init__(self, distance_matrix: np.ndarray,
                  pub_coords: List[Tuple[float, float]],
-                 pub_ids: List[int],
+                 pub_ids: List[str],
                  osrm_client: OSRMClient):
         """
         Initialize planner
@@ -716,8 +716,8 @@ class PubCrawlPlanner:
         removed_progress = self.project_onto_line(start_point, end_point, removed_coords)
 
         # Get neighbors (pub before and after)
-        prev_idx = current_route[removed_index - 1] if removed_index > 0 else 'start'
-        next_idx = current_route[removed_index + 1] if removed_index < len(current_route) - 1 else 'end'
+        prev_idx: Union[int, str] = current_route[removed_index - 1] if removed_index > 0 else 'start'
+        next_idx: Union[int, str] = current_route[removed_index + 1] if removed_index < len(current_route) - 1 else 'end'
 
         # Convert excluded IDs to indices
         excluded_indices = set()
@@ -755,23 +755,29 @@ class PubCrawlPlanner:
             try:
                 if prev_idx == 'start':
                     dist_from_prev = self.osrm_client.get_walking_distance(start_point, coords)
-                else:
+                elif isinstance(prev_idx, int):
                     dist_from_prev = self.distance_matrix[prev_idx][pub_idx]
+                else:
+                    continue
 
                 if next_idx == 'end':
                     dist_to_next = self.osrm_client.get_walking_distance(coords, end_point)
-                else:
+                elif isinstance(next_idx, int):
                     dist_to_next = self.distance_matrix[pub_idx][next_idx]
+                else:
+                    continue
 
                 # Calculate added distance (compared to going directly between neighbors)
                 if prev_idx == 'start' and next_idx == 'end':
                     direct_distance = self.osrm_client.get_walking_distance(start_point, end_point)
-                elif prev_idx == 'start':
+                elif prev_idx == 'start' and isinstance(next_idx, int):
                     direct_distance = self.osrm_client.get_walking_distance(start_point, self.pub_coords[next_idx])
-                elif next_idx == 'end':
+                elif next_idx == 'end' and isinstance(prev_idx, int):
                     direct_distance = self.osrm_client.get_walking_distance(self.pub_coords[prev_idx], end_point)
-                else:
+                elif isinstance(prev_idx, int) and isinstance(next_idx, int):
                     direct_distance = self.distance_matrix[prev_idx][next_idx]
+                else:
+                    continue
 
                 added_distance = (dist_from_prev + dist_to_next) - direct_distance
 
@@ -806,5 +812,5 @@ class PubCrawlPlanner:
                 continue
 
         # Sort by score (best first) and return top N
-        candidates_with_score.sort(key=lambda x: x['score'])
+        candidates_with_score.sort(key=lambda x: float(x['score']))
         return candidates_with_score[:num_alternatives]
