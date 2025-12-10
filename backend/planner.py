@@ -812,5 +812,5 @@ class PubCrawlPlanner:
                 continue
 
         # Sort by score (best first) and return top N
-        candidates_with_score.sort(key=lambda x: float(x['score']))
+        candidates_with_score.sort(key=lambda x: cast(float, x['score']))
         return candidates_with_score[:num_alternatives]
