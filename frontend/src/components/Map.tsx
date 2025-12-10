@@ -177,7 +177,7 @@ const Map: React.FC<MapProps> = ({
     if (route && route.pubs) {
       route.pubs.forEach((pub, index) => {
         const pubEl = document.createElement('div')
-        pubEl.className = `pub-marker-${pub.id}`
+        pubEl.className = `pub-marker-${pub.pub_id}`
         pubEl.style.cssText = `
           width: 32px;
           height: 32px;

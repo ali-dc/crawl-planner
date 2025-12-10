@@ -98,22 +98,20 @@ class PubCrawlPlannerApp:
 
     def _register_routes(self):
         """Register all API endpoints"""
-        self.app.get("/health", response_model=HealthResponse)(self.health_check)
-        self.app.get("/pubs", response_model=List[PubModel])(self.list_pubs)
-        self.app.get("/pubs/{pub_id}", response_model=PubModel)(self.get_pub)
-        self.app.post("/plan", response_model=PlanCrawlResponse)(self.plan_crawl)
-        self.app.post("/directions", response_model=List[RouteLegModel])(
+        self.app.get("/api/health", response_model=HealthResponse)(self.health_check)
+        self.app.get("/api/pubs", response_model=List[PubModel])(self.list_pubs)
+        self.app.get("/api/pubs/{pub_id}", response_model=PubModel)(self.get_pub)
+        self.app.post("/api/plan", response_model=PlanCrawlResponse)(self.plan_crawl)
+        self.app.post("/api/directions", response_model=List[RouteLegModel])(
             self.get_directions
         )
-        self.app.post("/precompute", response_model=dict)(self.trigger_precomputation)
-        self.app.post("/parse", response_model=dict)(self.parse_raw_data)
-        self.app.get("/status", response_model=PrecomputeStatusResponse)(self.get_status)
+        self.app.post("/api/precompute", response_model=dict)(self.trigger_precomputation)
+        self.app.post("/api/parse", response_model=dict)(self.parse_raw_data)
+        self.app.get("/api/status", response_model=PrecomputeStatusResponse)(self.get_status)
         # Shareable routes endpoints
-        self.app.post("/routes", response_model=SharedRouteResponse)(self.create_shared_route)
-        self.app.get("/routes/{share_id}", response_model=SharedRouteResponse)(self.get_shared_route)
-        self.app.delete("/routes/{share_id}", response_model=dict)(self.delete_shared_route)
-        # API path for shared routes (to avoid SPA routing conflicts)
+        self.app.post("/api/routes", response_model=SharedRouteResponse)(self.create_shared_route)
         self.app.get("/api/routes/{share_id}", response_model=SharedRouteResponse)(self.get_shared_route)
+        self.app.delete("/api/routes/{share_id}", response_model=dict)(self.delete_shared_route)
 
     @asynccontextmanager
     async def _lifespan(self, app: FastAPI):
@@ -265,21 +263,6 @@ class PubCrawlPlannerApp:
                     # Continue without directions rather than failing completely
                     legs = None
 
-            # Automatically store the route in the database
-            share_id = None
-            try:
-                share_id = self._store_route_in_database(
-                    request=request,
-                    route_indices=result["route"],
-                    pubs_in_route=pubs_in_route,
-                    total_distance_meters=result["total_distance"],
-                    estimated_time_minutes=result["estimated_time_minutes"],
-                    legs=legs,
-                )
-            except Exception as e:
-                print(f"Warning: Failed to store route in database: {e}")
-                # Continue without storing rather than failing the entire request
-
             response = PlanCrawlResponse(
                 route_indices=result["route"],
                 pubs=pubs_in_route,
@@ -287,7 +270,7 @@ class PubCrawlPlannerApp:
                 estimated_time_minutes=result["estimated_time_minutes"],
                 num_pubs=result["num_pubs"],
                 legs=legs,
-                share_id=share_id,
+                share_id=None,
             )
 
             return response
@@ -581,6 +564,20 @@ class PubCrawlPlannerApp:
             # Generate a ULID for the share ID (shorter, more URL-friendly than full ULID)
             share_id = str(ULID())[:8].lower()
 
+            # Convert legs to storable format (complete leg data with all fields)
+            legs_data = None
+            if request.legs:
+                legs_data = [
+                    {
+                        "from_index": leg.from_index,
+                        "to_index": leg.to_index,
+                        "distance_meters": leg.distance_meters,
+                        "duration_seconds": leg.duration_seconds,
+                        "geometry_encoded": leg.geometry_encoded,
+                    }
+                    for leg in request.legs
+                ]
+
             # Create the database record
             db = self.SessionLocal()
             try:
@@ -596,6 +593,7 @@ class PubCrawlPlannerApp:
                     uniformity_weight=request.uniformity_weight,
                     total_distance_meters=request.total_distance_meters,
                     estimated_time_minutes=request.estimated_time_minutes,
+                    legs_data=legs_data,
                 )
                 db.add(shared_route)
                 db.commit()
@@ -615,6 +613,7 @@ class PubCrawlPlannerApp:
                     uniformity_weight=request.uniformity_weight,
                     total_distance_meters=request.total_distance_meters,
                     estimated_time_minutes=request.estimated_time_minutes,
+                    legs=request.legs,
                 )
             finally:
                 db.close()

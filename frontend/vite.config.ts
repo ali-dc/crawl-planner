@@ -7,31 +7,7 @@ export default defineConfig({
   assetsInclude: ['**/*.geojson'],
   server: {
     proxy: {
-      '/health': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/pubs': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/plan': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/directions': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/precompute': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/parse': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/status': {
+      '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },

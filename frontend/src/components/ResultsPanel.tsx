@@ -20,6 +20,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import CloseIcon from '@mui/icons-material/Close'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import ShareIcon from '@mui/icons-material/Share'
+import SaveIcon from '@mui/icons-material/Save'
 import type { Route } from '../services/api'
 
 interface RouteStatsProps {
@@ -118,6 +119,8 @@ interface DesktopResultsProps {
   loading?: boolean
   isSharedRoute?: boolean
   onShare?: () => void
+  onSave?: () => void
+  isSaved?: boolean
 }
 
 const DesktopResults: React.FC<DesktopResultsProps> = ({
@@ -128,6 +131,8 @@ const DesktopResults: React.FC<DesktopResultsProps> = ({
   loading,
   isSharedRoute,
   onShare,
+  onSave,
+  isSaved,
 }) => {
   if (!visible || !route) return null
 
@@ -158,7 +163,18 @@ const DesktopResults: React.FC<DesktopResultsProps> = ({
             Your Route
           </Typography>
           <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {isSharedRoute && onShare && (
+            {!isSaved && onSave && !isSharedRoute && (
+              <IconButton
+                size="small"
+                onClick={onSave}
+                disabled={loading}
+                sx={{ color: 'primary.main' }}
+                title="Save route"
+              >
+                <SaveIcon />
+              </IconButton>
+            )}
+            {(isSaved || isSharedRoute) && onShare && (
               <IconButton
                 size="small"
                 onClick={onShare}
@@ -211,6 +227,8 @@ interface MobileResultsProps {
   loading?: boolean
   isSharedRoute?: boolean
   onShare?: () => void
+  onSave?: () => void
+  isSaved?: boolean
 }
 
 const MobileResults: React.FC<MobileResultsProps> = ({
@@ -221,6 +239,8 @@ const MobileResults: React.FC<MobileResultsProps> = ({
   loading,
   isSharedRoute,
   onShare,
+  onSave,
+  isSaved,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true)
 
@@ -265,7 +285,18 @@ const MobileResults: React.FC<MobileResultsProps> = ({
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
-          {isSharedRoute && onShare && (
+          {!isSaved && onSave && !isSharedRoute && (
+            <IconButton
+              size="small"
+              onClick={onSave}
+              disabled={loading}
+              sx={{ color: 'primary.main' }}
+              title="Save route"
+            >
+              <SaveIcon />
+            </IconButton>
+          )}
+          {(isSaved || isSharedRoute) && onShare && (
             <IconButton
               size="small"
               onClick={onShare}
@@ -375,6 +406,8 @@ interface ResultsPanelProps {
   loading?: boolean
   isSharedRoute?: boolean
   onShare?: () => void
+  onSave?: () => void
+  isSaved?: boolean
 }
 
 const ResultsPanel: React.FC<ResultsPanelProps> = ({
@@ -385,6 +418,8 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
   loading,
   isSharedRoute,
   onShare,
+  onSave,
+  isSaved,
 }) => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -400,6 +435,8 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
       loading={loading}
       isSharedRoute={isSharedRoute}
       onShare={onShare}
+      onSave={onSave}
+      isSaved={isSaved}
     />
   ) : (
     <DesktopResults
@@ -410,6 +447,8 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({
       loading={loading}
       isSharedRoute={isSharedRoute}
       onShare={onShare}
+      onSave={onSave}
+      isSaved={isSaved}
     />
   )
 }

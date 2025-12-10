@@ -28,6 +28,8 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [messageType, setMessageType] = useState<'success' | 'error' | null>(null)
+  const [isSaved, setIsSaved] = useState(false)
+  const [uniformityWeight] = useState(0.5)
 
   // Use refs to track state for map click handler
   const selectingStartRef = useRef(true)
@@ -71,16 +73,12 @@ function App() {
         state.startPoint,
         state.endPoint,
         state.numPubs,
-        0.5,
+        uniformityWeight,
         true
       )
-      // Redirect to the share page if a share_id was generated
-      if (route.share_id) {
-        navigate(`/routes/${route.share_id}`)
-      } else {
-        setRoute(route)
-        showMessage('Route planned successfully!', 'success')
-      }
+      setRoute(route)
+      setIsSaved(false)
+      showMessage('Route planned successfully!', 'success')
     } catch (error) {
       console.error('Error planning route:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -90,9 +88,50 @@ function App() {
     }
   }
 
+  const handleSaveRoute = async () => {
+    if (!state.route || !state.startPoint || !state.endPoint) {
+      showMessage('No route to save', 'error')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const saveRequest = {
+        start_point: {
+          longitude: state.startPoint[0],
+          latitude: state.startPoint[1],
+        },
+        end_point: {
+          longitude: state.endPoint[0],
+          latitude: state.endPoint[1],
+        },
+        route_indices: state.route.route_indices || [],
+        selected_pub_ids: state.route.pubs.map((pub) => pub.pub_id),
+        num_pubs: state.route.num_pubs || state.numPubs,
+        uniformity_weight: uniformityWeight,
+        total_distance_meters: state.route.total_distance_meters,
+        estimated_time_minutes: state.route.estimated_time_minutes,
+        legs: state.route.legs,
+      }
+
+      const savedRoute = await apiClient.saveRoute(saveRequest)
+      setIsSaved(true)
+      showMessage('Route saved!', 'success')
+      navigate(`/routes/${savedRoute.share_id}`)
+    } catch (error) {
+      console.error('Error saving route:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      showMessage(`Error saving route: ${errorMessage}`, 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleClear = () => {
     clearForm()
     setMessage(null)
+    setIsSaved(false)
   }
 
   return (
@@ -149,6 +188,9 @@ function App() {
             numPubs={state.numPubs}
             onRefresh={handlePlan}
             loading={loading}
+            onSave={handleSaveRoute}
+            isSaved={isSaved}
+            isSharedRoute={false}
           />
         </Box>
 

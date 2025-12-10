@@ -36,7 +36,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "curl -f http://localhost:8000/health 2>/dev/null || curl -fk https://localhost:8000/health || exit 1",
+          "curl -f http://localhost:8000/api/health 2>/dev/null || curl -fk https://localhost:8000/api/health || exit 1",
         ]
       interval: 30s
       timeout: 10s
@@ -62,7 +62,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "curl -f http://localhost/health 2>/dev/null || curl -fk https://localhost/health || exit 1",
+          "curl -f http://localhost/api/health 2>/dev/null || curl -fk https://localhost/api/health || exit 1",
         ]
       interval: 30s
       timeout: 10s

@@ -191,16 +191,16 @@ uv run precompute_distances.py
 **Testing the API directly:**
 ```bash
 # Check API health
-curl http://localhost:8000/health
+curl http://localhost:8000/api/health
 
 # List available pubs (paginated)
-curl http://localhost:8000/pubs?skip=0&limit=10
+curl http://localhost:8000/api/pubs?skip=0&limit=10
 
 # Get details for a specific pub
-curl http://localhost:8000/pubs/{pub_id}
+curl http://localhost:8000/api/pubs/{pub_id}
 
 # Plan a route
-curl -X POST http://localhost:8000/plan \
+curl -X POST http://localhost:8000/api/plan \
   -H "Content-Type: application/json" \
   -d '{
     "start_point": {"longitude": -2.6, "latitude": 51.4},
@@ -210,10 +210,10 @@ curl -X POST http://localhost:8000/plan \
   }'
 
 # Trigger distance precomputation (long-running)
-curl -X POST http://localhost:8000/precompute
+curl -X POST http://localhost:8000/api/precompute
 
 # Check precomputation status
-curl http://localhost:8000/status
+curl http://localhost:8000/api/status
 ```
 
 ### Frontend (React / TypeScript / Vite)
@@ -237,7 +237,7 @@ npm run type-check # Type check with TypeScript (tsc)
 ```
 
 **Frontend dev server proxying:**
-The Vite dev server automatically proxies API requests to `http://localhost:8000`. All paths under `/health`, `/pubs`, `/plan`, `/directions`, `/precompute`, `/parse`, and `/status` are forwarded to the backend. This allows development without CORS issues.
+The Vite dev server automatically proxies API requests to `http://localhost:8000`. All paths under `/api` are forwarded to the backend. This allows development without CORS issues.
 
 ### OSRM Server
 

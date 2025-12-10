@@ -18,7 +18,7 @@ export interface PlanRequest {
 }
 
 export interface Pub {
-  id: string
+  pub_id: string
   pub_name: string
   address: string
   longitude: number
@@ -62,6 +62,18 @@ export interface HealthStatus {
 export interface StatusResponse {
   status: string
   progress?: number
+}
+
+export interface CreateSharedRouteRequest {
+  start_point: Coordinate
+  end_point: Coordinate
+  route_indices: (number | string)[]
+  selected_pub_ids: string[]
+  num_pubs: number
+  uniformity_weight: number
+  total_distance_meters: number
+  estimated_time_minutes: number
+  legs?: RouteLeg[]
 }
 
 export interface SharedRoute {
@@ -122,7 +134,7 @@ export const apiClient = {
     uniformityWeight: number = 0.2,
     includeDirections: boolean = true
   ): Promise<Route> {
-    return this.post<Route>('/plan', {
+    return this.post<Route>('/api/plan', {
       start_point: {
         longitude: startPoint[0],
         latitude: startPoint[1],
@@ -139,43 +151,48 @@ export const apiClient = {
 
   // Get directions for a route
   async getDirections(routeIndices: number[]): Promise<Route> {
-    return this.post<Route>('/directions', {
+    return this.post<Route>('/api/directions', {
       route_indices: routeIndices,
     })
   },
 
   // Health check
   async health(): Promise<HealthStatus> {
-    return this.get<HealthStatus>('/health')
+    return this.get<HealthStatus>('/api/health')
   },
 
   // Get list of pubs
   async getPubs(skip: number = 0, limit: number = 100): Promise<Pub[]> {
-    return this.get<Pub[]>(`/pubs?skip=${skip}&limit=${limit}`)
+    return this.get<Pub[]>(`/api/pubs?skip=${skip}&limit=${limit}`)
   },
 
   // Get a specific pub
   async getPub(pubId: string): Promise<Pub> {
-    return this.get<Pub>(`/pubs/${pubId}`)
+    return this.get<Pub>(`/api/pubs/${pubId}`)
   },
 
   // Parse raw data
   async parse(): Promise<StatusResponse> {
-    return this.post<StatusResponse>('/parse', {})
+    return this.post<StatusResponse>('/api/parse', {})
   },
 
   // Precompute distances
   async precompute(): Promise<StatusResponse> {
-    return this.post<StatusResponse>('/precompute', {})
+    return this.post<StatusResponse>('/api/precompute', {})
   },
 
   // Get precomputation status
   async getStatus(): Promise<StatusResponse> {
-    return this.get<StatusResponse>('/status')
+    return this.get<StatusResponse>('/api/status')
   },
 
   // Get a shared route by ID
   async getSharedRoute(shareId: string): Promise<SharedRoute> {
     return this.get<SharedRoute>(`/api/routes/${shareId}`)
+  },
+
+  // Save a route to get a shareable link
+  async saveRoute(request: CreateSharedRouteRequest): Promise<SharedRoute> {
+    return this.post<SharedRoute>('/api/routes', request)
   },
 }
