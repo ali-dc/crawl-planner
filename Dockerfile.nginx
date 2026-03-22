@@ -35,8 +35,19 @@ COPY --from=frontend-builder /frontend/dist /app/
 # Create directory for Let's Encrypt
 RUN mkdir -p /var/www/certbot
 
+# Copy custom entrypoint script
+COPY nginx-entrypoint.sh /nginx-entrypoint.sh
+RUN chmod +x /nginx-entrypoint.sh
+
+# Set up cron for automatic certificate renewal (runs twice daily at 2am and 2pm)
+RUN echo "0 2,14 * * * /usr/bin/certbot renew --quiet --deploy-hook 'nginx -s reload' >> /var/log/certbot-renew.log 2>&1" | crontab -
+
 # Expose ports
 EXPOSE 80 443
+
+# Use custom entrypoint
+ENTRYPOINT ["/nginx-entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
