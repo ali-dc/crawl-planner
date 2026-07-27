@@ -100,6 +100,17 @@ function SharedRoute() {
     )
   }
 
+  // Routes planned without a finish point carry no 'end' marker. Their stored
+  // end coordinates are just the last pub, so don't draw a finish flag there.
+  const hasEnd = (sharedRoute.route_indices || []).includes('end')
+  const startPoint: [number, number] = [
+    sharedRoute.start_point.longitude,
+    sharedRoute.start_point.latitude,
+  ]
+  const endPoint: [number, number] | null = hasEnd
+    ? [sharedRoute.end_point.longitude, sharedRoute.end_point.latitude]
+    : null
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -111,7 +122,7 @@ function SharedRoute() {
           width: '100%',
         }}
       >
-        <Header startPoint={[sharedRoute.start_point.longitude, sharedRoute.start_point.latitude]} endPoint={[sharedRoute.end_point.longitude, sharedRoute.end_point.latitude]} />
+        <Header startPoint={startPoint} endPoint={endPoint} />
 
         <Box
           sx={{
@@ -136,10 +147,11 @@ function SharedRoute() {
             }}
           >
             <Map
-              startPoint={[sharedRoute.start_point.longitude, sharedRoute.start_point.latitude]}
-              endPoint={[sharedRoute.end_point.longitude, sharedRoute.end_point.latitude]}
+              startPoint={startPoint}
+              endPoint={endPoint}
               route={{
                 pubs: sharedRoute.pubs || [],
+                route_indices: sharedRoute.route_indices,
                 total_distance_meters: sharedRoute.total_distance_meters,
                 estimated_time_minutes: sharedRoute.estimated_time_minutes,
                 num_pubs: sharedRoute.num_pubs,

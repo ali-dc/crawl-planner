@@ -25,6 +25,16 @@ export interface Pub {
   latitude: number
 }
 
+// A pub as returned by /api/pubs — the catalogue shape, which differs from the
+// Pub shape used inside a planned route (pub_id/pub_name).
+export interface PubCatalogItem {
+  id: string
+  name: string
+  longitude: number
+  latitude: number
+  address?: Record<string, unknown> | null
+}
+
 export interface RouteLeg {
   distance_meters: number
   duration_seconds: number
@@ -168,6 +178,27 @@ export const apiClient = {
     })
   },
 
+  // Plan the shortest route through a chosen set of pubs.
+  // endPoint may be null for an open-ended route finishing at the last pub.
+  async planSelected(
+    startPoint: [number, number],
+    endPoint: [number, number] | null,
+    pubIds: string[],
+    includeDirections: boolean = true
+  ): Promise<Route> {
+    return this.post<Route>('/api/plan-selected', {
+      start_point: {
+        longitude: startPoint[0],
+        latitude: startPoint[1],
+      },
+      end_point: endPoint
+        ? { longitude: endPoint[0], latitude: endPoint[1] }
+        : null,
+      pub_ids: pubIds,
+      include_directions: includeDirections,
+    })
+  },
+
   // Get directions for a route
   async getDirections(routeIndices: number[]): Promise<Route> {
     return this.post<Route>('/api/directions', {
@@ -181,13 +212,18 @@ export const apiClient = {
   },
 
   // Get list of pubs
-  async getPubs(skip: number = 0, limit: number = 100): Promise<Pub[]> {
-    return this.get<Pub[]>(`/api/pubs?skip=${skip}&limit=${limit}`)
+  async getPubs(skip: number = 0, limit: number = 100): Promise<PubCatalogItem[]> {
+    return this.get<PubCatalogItem[]>(`/api/pubs?skip=${skip}&limit=${limit}`)
+  },
+
+  // Get the whole pub catalogue (backend caps limit at 1000)
+  async getAllPubs(): Promise<PubCatalogItem[]> {
+    return this.getPubs(0, 1000)
   },
 
   // Get a specific pub
-  async getPub(pubId: string): Promise<Pub> {
-    return this.get<Pub>(`/api/pubs/${pubId}`)
+  async getPub(pubId: string): Promise<PubCatalogItem> {
+    return this.get<PubCatalogItem>(`/api/pubs/${pubId}`)
   },
 
   // Parse raw data

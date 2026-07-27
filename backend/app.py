@@ -18,6 +18,7 @@ load_dotenv()
 from api_schemas import (
     PlanCrawlRequest,
     PlanCrawlResponse,
+    PlanSelectedRequest,
     PubInRoute,
     DirectionsRequest,
     HealthResponse,
@@ -113,6 +114,7 @@ class PubCrawlPlannerApp:
         self.app.get("/api/pubs", response_model=List[PubModel])(self.list_pubs)
         self.app.get("/api/pubs/{pub_id}", response_model=PubModel)(self.get_pub)
         self.app.post("/api/plan", response_model=PlanCrawlResponse)(self.plan_crawl)
+        self.app.post("/api/plan-selected", response_model=PlanCrawlResponse)(self.plan_selected)
         self.app.post("/api/directions", response_model=List[RouteLegModel])(
             self.get_directions
         )
@@ -335,6 +337,90 @@ class PubCrawlPlannerApp:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error planning route: {str(e)}")
 
+    async def plan_selected(self, request: PlanSelectedRequest) -> PlanCrawlResponse:
+        """
+        Route through an explicitly chosen set of pubs
+
+        The caller picks the pubs; the planner only decides the order that makes the
+        walk shortest. The end point is optional - without one the route finishes at
+        whichever pub the solver puts last, and the returned route_indices carry no
+        'end' marker.
+
+        Args:
+            request: start_point, optional end_point, pub_ids, include_directions
+
+        Returns:
+            Optimized route with pub details and navigation information
+        """
+        if self.planner is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Distance matrix not loaded. Run /precompute endpoint first.",
+            )
+
+        # Resolve pub IDs to matrix indices. Position in pubs_data matches position in
+        # planner.pub_ids - the invariant checked by distance_matrix_matches_pubs.
+        index_by_id = {pub.id: i for i, pub in enumerate(self.pubs_data)}
+        pub_indices: List[int] = []
+        seen: set[str] = set()
+        for pub_id in request.pub_ids:
+            if pub_id in seen:
+                continue
+            if pub_id not in index_by_id:
+                raise HTTPException(status_code=404, detail=f"Pub {pub_id} not found")
+            seen.add(pub_id)
+            pub_indices.append(index_by_id[pub_id])
+
+        start_tuple = request.start_point.tuple
+        end_tuple = request.end_point.tuple if request.end_point else None
+
+        try:
+            result = self.planner.plan_fixed_pubs(
+                start_point=start_tuple,
+                end_point=end_tuple,
+                pub_indices=pub_indices,
+            )
+
+            # Build pub information list
+            pubs_in_route = []
+            for i, pub_idx in enumerate(result["route"]):
+                if isinstance(pub_idx, int):
+                    pub = self.pubs_data[pub_idx]
+                    pubs_in_route.append(
+                        PubInRoute(
+                            index=i,
+                            pub_id=pub.id,
+                            pub_name=pub.name,
+                            longitude=pub.longitude,
+                            latitude=pub.latitude,
+                        )
+                    )
+
+            # Get directions if requested
+            legs = None
+            if request.include_directions:
+                try:
+                    legs = self.get_route_legs(result["route"], start_tuple, end_tuple)
+                except Exception as e:
+                    print(f"Warning: Failed to get directions: {e}")
+                    # Continue without directions rather than failing completely
+                    legs = None
+
+            return PlanCrawlResponse(
+                route_indices=result["route"],
+                pubs=pubs_in_route,
+                total_distance_meters=result["total_distance"],
+                estimated_time_minutes=result["estimated_time_minutes"],
+                num_pubs=result["num_pubs"],
+                legs=legs,
+                share_id=None,
+            )
+
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error planning route: {str(e)}")
+
     async def get_directions(self, request: DirectionsRequest) -> List[RouteLegModel]:
         """
         Get turn-by-turn directions for a route
@@ -429,7 +515,10 @@ class PubCrawlPlannerApp:
             db.close()
 
     def get_route_legs(
-        self, route_indices: List[int | str], start_point: tuple, end_point: tuple
+        self,
+        route_indices: List[int | str],
+        start_point: tuple,
+        end_point: Optional[tuple] = None,
     ) -> List[RouteLegModel]:
         """
         Convert route indices to navigation legs with OSRM directions
@@ -437,7 +526,8 @@ class PubCrawlPlannerApp:
         Args:
             route_indices: List of pub indices with 'start' and 'end' markers
             start_point: (longitude, latitude) tuple
-            end_point: (longitude, latitude) tuple
+            end_point: (longitude, latitude) tuple, or None for open-ended routes
+                (which carry no 'end' marker, so it is never dereferenced)
 
         Returns:
             List of RouteLegModel objects
@@ -463,6 +553,8 @@ class PubCrawlPlannerApp:
                 from_coords = from_idx  # type: ignore[assignment]
 
             if to_idx == "end":
+                if end_point is None:
+                    raise Exception("Route contains an 'end' marker but no end point was given")
                 to_coords = end_point
             elif isinstance(to_idx, int):
                 to_coords = (

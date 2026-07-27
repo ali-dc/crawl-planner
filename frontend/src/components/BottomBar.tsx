@@ -4,11 +4,18 @@ import {
   TextField,
   Button,
   Stack,
+  Autocomplete,
+  Chip,
+  ToggleButton,
+  ToggleButtonGroup,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
 import ClearIcon from '@mui/icons-material/Clear'
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk'
+import FlagIcon from '@mui/icons-material/Flag'
+import type { PlanMode } from '../hooks/usePlanState'
+import type { PubCatalogItem } from '../services/api'
 
 interface BottomBarProps {
   startPoint: [number, number] | null
@@ -18,7 +25,18 @@ interface BottomBarProps {
   onPlan: () => void
   onClear: () => void
   loading: boolean
+  mode: PlanMode
+  onModeChange: (mode: PlanMode) => void
+  pubCatalog: PubCatalogItem[]
+  selectedPubIds: string[]
+  onSelectedPubIdsChange: (pubIds: string[]) => void
+  catalogLoading: boolean
+  selectingEnd: boolean
+  onPickEnd: () => void
+  onClearEnd: () => void
 }
+
+const MAX_SELECTED_PUBS = 25
 
 const BottomBar: React.FC<BottomBarProps> = ({
   startPoint,
@@ -28,9 +46,27 @@ const BottomBar: React.FC<BottomBarProps> = ({
   onPlan,
   onClear,
   loading,
+  mode,
+  onModeChange,
+  pubCatalog,
+  selectedPubIds,
+  onSelectedPubIdsChange,
+  catalogLoading,
+  selectingEnd,
+  onPickEnd,
+  onClearEnd,
 }) => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+
+  const pubById = new Map(pubCatalog.map((pub) => [pub.id, pub]))
+  const selectedPubs = selectedPubIds
+    .map((id) => pubById.get(id))
+    .filter((pub): pub is PubCatalogItem => Boolean(pub))
+
+  const canPlan =
+    Boolean(startPoint) &&
+    (mode === 'corridor' ? Boolean(endPoint) : selectedPubIds.length > 0)
 
   return (
     <Paper
@@ -42,54 +78,129 @@ const BottomBar: React.FC<BottomBarProps> = ({
         borderTop: '1px solid #e0e0e0',
       }}
     >
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          gap: 2,
-          alignItems: isMobile ? 'stretch' : 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <TextField
-          type="number"
-          inputProps={{ min: 1, max: 20 }}
-          value={numPubs}
-          onChange={(e) => onNumPubsChange(parseInt(e.target.value))}
-          label="Number of Pubs"
+      <Stack gap={1.5} alignItems="center">
+        <ToggleButtonGroup
+          value={mode}
+          exclusive
           size="small"
-          sx={{
-            width: isMobile ? '100%' : 120,
-            '& .MuiInputBase-root': {
-              backgroundColor: 'white',
-            },
-          }}
-        />
+          onChange={(_, next: PlanMode | null) => next && onModeChange(next)}
+          sx={{ backgroundColor: 'white' }}
+        >
+          <ToggleButton value="corridor">Plan for me</ToggleButton>
+          <ToggleButton value="select">Pick pubs</ToggleButton>
+        </ToggleButtonGroup>
 
-        <Stack direction={isMobile ? 'column' : 'row'} gap={1} sx={{ width: isMobile ? '100%' : 'auto' }}>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<DirectionsWalkIcon />}
-            onClick={onPlan}
-            disabled={!startPoint || !endPoint || loading}
-            fullWidth={isMobile}
-            size={isMobile ? 'medium' : 'small'}
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: 2,
+            width: '100%',
+            alignItems: isMobile ? 'stretch' : 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {mode === 'corridor' ? (
+            <TextField
+              type="number"
+              inputProps={{ min: 1, max: 20 }}
+              value={numPubs}
+              onChange={(e) => onNumPubsChange(parseInt(e.target.value))}
+              label="Number of Pubs"
+              size="small"
+              sx={{
+                width: isMobile ? '100%' : 120,
+                '& .MuiInputBase-root': {
+                  backgroundColor: 'white',
+                },
+              }}
+            />
+          ) : (
+            <>
+              <Autocomplete
+                multiple
+                disableCloseOnSelect
+                size="small"
+                options={pubCatalog}
+                loading={catalogLoading}
+                value={selectedPubs}
+                getOptionLabel={(pub) => pub.name}
+                isOptionEqualToValue={(a, b) => a.id === b.id}
+                getOptionDisabled={(pub) =>
+                  selectedPubIds.length >= MAX_SELECTED_PUBS && !selectedPubIds.includes(pub.id)
+                }
+                onChange={(_, pubs) => onSelectedPubIdsChange(pubs.map((pub) => pub.id))}
+                limitTags={3}
+                renderTags={(pubs, getTagProps) =>
+                  pubs.map((pub, index) => {
+                    const { key, ...tagProps } = getTagProps({ index })
+                    return <Chip key={key} label={pub.name} size="small" {...tagProps} />
+                  })
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Pubs to visit"
+                    placeholder={selectedPubIds.length ? '' : 'Search pubs'}
+                    helperText={
+                      selectedPubIds.length >= MAX_SELECTED_PUBS
+                        ? `Maximum ${MAX_SELECTED_PUBS} pubs`
+                        : 'Or tap pubs on the map'
+                    }
+                  />
+                )}
+                sx={{
+                  width: isMobile ? '100%' : 420,
+                  '& .MuiInputBase-root': { backgroundColor: 'white' },
+                }}
+              />
+              <Button
+                variant={selectingEnd ? 'contained' : 'outlined'}
+                color="secondary"
+                startIcon={<FlagIcon />}
+                onClick={endPoint ? onClearEnd : onPickEnd}
+                fullWidth={isMobile}
+                size={isMobile ? 'medium' : 'small'}
+                sx={{ whiteSpace: 'nowrap' }}
+              >
+                {endPoint
+                  ? 'Clear finish'
+                  : selectingEnd
+                    ? 'Tap the map'
+                    : 'Set finish (optional)'}
+              </Button>
+            </>
+          )}
+
+          <Stack
+            direction={isMobile ? 'column' : 'row'}
+            gap={1}
+            sx={{ width: isMobile ? '100%' : 'auto' }}
           >
-            {loading ? 'Planning...' : 'Plan'}
-          </Button>
-          <Button
-            variant="outlined"
-            color="secondary"
-            startIcon={<ClearIcon />}
-            onClick={onClear}
-            fullWidth={isMobile}
-            size={isMobile ? 'medium' : 'small'}
-          >
-            Clear
-          </Button>
-        </Stack>
-      </Box>
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<DirectionsWalkIcon />}
+              onClick={onPlan}
+              disabled={!canPlan || loading}
+              fullWidth={isMobile}
+              size={isMobile ? 'medium' : 'small'}
+            >
+              {loading ? 'Planning...' : 'Plan'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<ClearIcon />}
+              onClick={onClear}
+              fullWidth={isMobile}
+              size={isMobile ? 'medium' : 'small'}
+            >
+              Clear
+            </Button>
+          </Stack>
+        </Box>
+      </Stack>
     </Paper>
   )
 }

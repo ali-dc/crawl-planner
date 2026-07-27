@@ -10,7 +10,13 @@ import PubRemovalDialog from './components/PubRemovalDialog'
 import Messages from './components/Messages'
 import Loading from './components/Loading'
 import { usePlanState } from './hooks/usePlanState'
-import { apiClient, type Pub, type AlternativePub, type RouteEstimate } from './services/api'
+import {
+  apiClient,
+  type Pub,
+  type PubCatalogItem,
+  type AlternativePub,
+  type RouteEstimate,
+} from './services/api'
 import theme from './theme'
 
 function App() {
@@ -23,6 +29,9 @@ function App() {
     setNumPubs,
     setSelectingStart,
     setSelectingEnd,
+    setMode,
+    setSelectedPubIds,
+    togglePubSelection,
     clearForm,
   } = usePlanState()
 
@@ -31,6 +40,10 @@ function App() {
   const [messageType, setMessageType] = useState<'success' | 'error' | null>(null)
   const [isSaved, setIsSaved] = useState(false)
   const [uniformityWeight] = useState(0.5)
+
+  // Pub catalogue, fetched lazily the first time the user picks pubs themselves
+  const [pubCatalog, setPubCatalog] = useState<PubCatalogItem[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
 
   // Pub removal dialog state
   const [removalDialogOpen, setRemovalDialogOpen] = useState(false)
@@ -42,19 +55,47 @@ function App() {
   // Use refs to track state for map click handler
   const selectingStartRef = useRef(true)
   const selectingEndRef = useRef(false)
+  const modeRef = useRef(state.mode)
 
   // Update refs when state changes
   useEffect(() => {
     selectingStartRef.current = state.selectingStart
     selectingEndRef.current = state.selectingEnd
-  }, [state.selectingStart, state.selectingEnd])
+    modeRef.current = state.mode
+  }, [state.selectingStart, state.selectingEnd, state.mode])
+
+  // Load the pub catalogue the first time it is needed
+  useEffect(() => {
+    if (state.mode !== 'select' || pubCatalog.length > 0 || catalogLoading) return
+
+    let cancelled = false
+    setCatalogLoading(true)
+    apiClient
+      .getAllPubs()
+      .then((pubs) => {
+        if (!cancelled) setPubCatalog(pubs)
+      })
+      .catch((error) => {
+        console.error('Error loading pubs:', error)
+        if (!cancelled) showMessage('Failed to load pub list', 'error')
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [state.mode, pubCatalog.length, catalogLoading])
 
   // Handle map clicks for start/end point selection
   const handleMapClick = useCallback(([lng, lat]: [number, number]) => {
     if (selectingStartRef.current) {
       setStartPoint([lng, lat])
       setSelectingStart(false)
-      setSelectingEnd(true)
+      // In select mode the end is optional and armed from the bottom bar, so
+      // map clicks stay free for picking pubs.
+      setSelectingEnd(modeRef.current === 'corridor')
       showMessage('Start location selected', 'success')
     } else if (selectingEndRef.current) {
       setEndPoint([lng, lat])
@@ -69,21 +110,37 @@ function App() {
   }
 
   const handlePlan = async () => {
-    if (!state.startPoint || !state.endPoint) {
+    if (!state.startPoint) {
+      showMessage('Please select a start location', 'error')
+      return
+    }
+    if (state.mode === 'corridor' && !state.endPoint) {
       showMessage('Please select both start and end locations', 'error')
+      return
+    }
+    if (state.mode === 'select' && state.selectedPubIds.length === 0) {
+      showMessage('Please choose at least one pub', 'error')
       return
     }
 
     setLoading(true)
 
     try {
-      const route = await apiClient.planCrawl(
-        state.startPoint,
-        state.endPoint,
-        state.numPubs,
-        uniformityWeight,
-        true
-      )
+      const route =
+        state.mode === 'select'
+          ? await apiClient.planSelected(
+              state.startPoint,
+              state.endPoint,
+              state.selectedPubIds,
+              true
+            )
+          : await apiClient.planCrawl(
+              state.startPoint,
+              state.endPoint!,
+              state.numPubs,
+              uniformityWeight,
+              true
+            )
       setRoute(route)
       setIsSaved(false)
       showMessage('Route planned successfully!', 'success')
@@ -97,7 +154,17 @@ function App() {
   }
 
   const handleSaveRoute = async () => {
-    if (!state.route || !state.startPoint || !state.endPoint) {
+    if (!state.route || !state.startPoint) {
+      showMessage('No route to save', 'error')
+      return
+    }
+
+    // Open-ended routes have no end point, but the stored record needs one.
+    // Fall back to the last pub; the absence of an 'end' marker in
+    // route_indices is what marks the route as open-ended when it is reloaded.
+    const lastPub = state.route.pubs[state.route.pubs.length - 1]
+    const endPoint = state.endPoint ?? (lastPub ? [lastPub.longitude, lastPub.latitude] : null)
+    if (!endPoint) {
       showMessage('No route to save', 'error')
       return
     }
@@ -111,13 +178,13 @@ function App() {
           latitude: state.startPoint[1],
         },
         end_point: {
-          longitude: state.endPoint[0],
-          latitude: state.endPoint[1],
+          longitude: endPoint[0],
+          latitude: endPoint[1],
         },
         route_indices: state.route.route_indices || [],
         selected_pub_ids: state.route.pubs.map((pub) => pub.pub_id),
         num_pubs: state.route.num_pubs || state.numPubs,
-        uniformity_weight: uniformityWeight,
+        uniformity_weight: state.mode === 'select' ? 0 : uniformityWeight,
         total_distance_meters: state.route.total_distance_meters,
         estimated_time_minutes: state.route.estimated_time_minutes,
         legs: state.route.legs,
@@ -275,6 +342,10 @@ function App() {
               onMapClick={handleMapClick}
               selectingStart={state.selectingStart}
               selectingEnd={state.selectingEnd}
+              pubCatalog={pubCatalog}
+              selectedPubIds={state.selectedPubIds}
+              onTogglePub={togglePubSelection}
+              showPubCatalog={state.mode === 'select' && !state.route}
             />
           </Box>
 
@@ -290,7 +361,9 @@ function App() {
             onSave={handleSaveRoute}
             isSaved={isSaved}
             isSharedRoute={false}
-            onRemovePub={handleRemovePubClick}
+            // Pub swapping searches the corridor for substitutes, which makes no
+            // sense for a hand-picked set
+            onRemovePub={state.mode === 'corridor' ? handleRemovePubClick : undefined}
           />
         </Box>
 
@@ -304,6 +377,18 @@ function App() {
             onPlan={handlePlan}
             onClear={handleClear}
             loading={loading}
+            mode={state.mode}
+            onModeChange={setMode}
+            pubCatalog={pubCatalog}
+            selectedPubIds={state.selectedPubIds}
+            onSelectedPubIdsChange={setSelectedPubIds}
+            catalogLoading={catalogLoading}
+            selectingEnd={state.selectingEnd}
+            onPickEnd={() => setSelectingEnd(true)}
+            onClearEnd={() => {
+              setEndPoint(null)
+              setSelectingEnd(false)
+            }}
           />
         )}
 

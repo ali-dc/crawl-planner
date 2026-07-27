@@ -5,10 +5,13 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { createStartMarkerElement, createEndMarkerElement } from '../utils/markerIcons'
 import { decodePolyline } from '../utils/polyline'
-import type { Route } from '../services/api'
+import type { PubCatalogItem, Route } from '../services/api'
 import bristolBoundaryUrl from '../assets/bristol_boundary.geojson?url'
 
 const BRISTOL_CENTER: [number, number] = [-2.5879, 51.4545]
+
+const CATALOG_SOURCE = 'pub-catalog-source'
+const CATALOG_LAYER = 'pub-catalog'
 
 interface MapProps {
   startPoint: [number, number] | null
@@ -17,6 +20,10 @@ interface MapProps {
   onMapClick: (coords: [number, number]) => void
   selectingStart: boolean
   selectingEnd: boolean
+  pubCatalog?: PubCatalogItem[]
+  selectedPubIds?: string[]
+  onTogglePub?: (pubId: string) => void
+  showPubCatalog?: boolean
 }
 
 const Map: React.FC<MapProps> = ({
@@ -26,6 +33,10 @@ const Map: React.FC<MapProps> = ({
   onMapClick,
   selectingStart,
   selectingEnd,
+  pubCatalog = [],
+  selectedPubIds = [],
+  onTogglePub,
+  showPubCatalog = false,
 }) => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -37,6 +48,13 @@ const Map: React.FC<MapProps> = ({
   const endMarkerRef = useRef<maplibregl.Marker | null>(null)
   const pubMarkersRef = useRef<maplibregl.Marker[]>([])
   const popupRef = useRef<maplibregl.Popup | null>(null)
+  // The map click handler is registered once and keeps its original closure, so
+  // catalogue state is read through refs to stay current.
+  const catalogVisibleRef = useRef(false)
+  const onTogglePubRef = useRef<((pubId: string) => void) | undefined>(onTogglePub)
+
+  catalogVisibleRef.current = showPubCatalog
+  onTogglePubRef.current = onTogglePub
 
   // Initialize map
   useEffect(() => {
@@ -86,9 +104,23 @@ const Map: React.FC<MapProps> = ({
 
     // Register click handler - only process if in selection mode
     const handleMapClickEvent = (e: maplibregl.MapLayerMouseEvent | maplibregl.MapMouseEvent) => {
+      const event = e as maplibregl.MapMouseEvent
+
+      // A click on a catalogue pub toggles its selection and never drops a pin.
+      // Checked here rather than with a layer listener so there is no ambiguity
+      // about which handler runs first.
+      if (catalogVisibleRef.current && map.current?.getLayer(CATALOG_LAYER)) {
+        const hits = map.current.queryRenderedFeatures(event.point, { layers: [CATALOG_LAYER] })
+        const pubId = hits[0]?.properties?.id as string | undefined
+        if (pubId) {
+          onTogglePubRef.current?.(pubId)
+          return
+        }
+      }
+
       // Only process map clicks if we're actively selecting start or end points
       if (selectingStart || selectingEnd) {
-        const { lng, lat } = (e as maplibregl.MapMouseEvent).lngLat
+        const { lng, lat } = event.lngLat
         onMapClick([lng, lat])
       }
     }
@@ -158,6 +190,82 @@ const Map: React.FC<MapProps> = ({
         .addTo(map.current)
     }
   }, [endPoint, isMapReady])
+
+  // Manage the selectable pub catalogue. One GeoJSON source with data-driven
+  // styling rather than a DOM marker per pub - there are hundreds of them.
+  useEffect(() => {
+    if (!map.current || !isMapReady) return
+    const mapInstance = map.current
+
+    const removeCatalog = () => {
+      if (mapInstance.getLayer(CATALOG_LAYER)) mapInstance.removeLayer(CATALOG_LAYER)
+      if (mapInstance.getSource(CATALOG_SOURCE)) mapInstance.removeSource(CATALOG_SOURCE)
+    }
+
+    if (!showPubCatalog || pubCatalog.length === 0) {
+      removeCatalog()
+      return
+    }
+
+    const selected = new Set(selectedPubIds)
+    const data: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: pubCatalog.map((pub) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [pub.longitude, pub.latitude] },
+        properties: { id: pub.id, name: pub.name, selected: selected.has(pub.id) },
+      })),
+    }
+
+    const source = mapInstance.getSource(CATALOG_SOURCE) as maplibregl.GeoJSONSource | undefined
+    if (source) {
+      source.setData(data)
+    } else {
+      mapInstance.addSource(CATALOG_SOURCE, { type: 'geojson', data })
+      mapInstance.addLayer({
+        id: CATALOG_LAYER,
+        type: 'circle',
+        source: CATALOG_SOURCE,
+        paint: {
+          'circle-radius': ['case', ['get', 'selected'], 9, 5],
+          'circle-color': ['case', ['get', 'selected'], '#667eea', '#ffffff'],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': ['case', ['get', 'selected'], '#4c51bf', '#667eea'],
+        },
+      })
+    }
+
+    // Hover affordance: pointer cursor plus the pub's name
+    const hoverPopup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+    })
+
+    const handleEnter = (e: maplibregl.MapLayerMouseEvent) => {
+      mapInstance.getCanvas().style.cursor = 'pointer'
+      const name = e.features?.[0]?.properties?.name as string | undefined
+      if (name) hoverPopup.setLngLat(e.lngLat).setText(name).addTo(mapInstance)
+    }
+    const handleMove = (e: maplibregl.MapLayerMouseEvent) => {
+      hoverPopup.setLngLat(e.lngLat)
+    }
+    const handleLeave = () => {
+      mapInstance.getCanvas().style.cursor = ''
+      hoverPopup.remove()
+    }
+
+    mapInstance.on('mouseenter', CATALOG_LAYER, handleEnter)
+    mapInstance.on('mousemove', CATALOG_LAYER, handleMove)
+    mapInstance.on('mouseleave', CATALOG_LAYER, handleLeave)
+
+    return () => {
+      hoverPopup.remove()
+      mapInstance.off('mouseenter', CATALOG_LAYER, handleEnter)
+      mapInstance.off('mousemove', CATALOG_LAYER, handleMove)
+      mapInstance.off('mouseleave', CATALOG_LAYER, handleLeave)
+    }
+  }, [pubCatalog, selectedPubIds, showPubCatalog, isMapReady])
 
   // Manage pub markers - only recreate when route changes
   useEffect(() => {

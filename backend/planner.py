@@ -4,6 +4,14 @@ import math
 from typing import List, Tuple, Dict, Union, Any, cast, Optional
 from osrm_client import OSRMClient
 
+# Largest pub count for which the fixed-pub mode solves the ordering exactly
+# (Held-Karp is O(2^n * n^2); n=12 is ~590k inner steps, well under a second).
+EXACT_MAX_PUBS = 12
+
+# Restarts used by the heuristic fixed-pub solver above EXACT_MAX_PUBS
+HEURISTIC_RESTARTS = 20
+
+
 class PubCrawlPlanner:
     """Plan optimal pub crawl routes"""
 
@@ -85,6 +93,224 @@ class PubCrawlPlanner:
             'estimated_time_minutes': total_distance / 80.0,  # ~80m/min walking speed
             'num_pubs': num_pubs
         }
+
+    def plan_fixed_pubs(self, start_point: Tuple[float, float],
+                        end_point: Optional[Tuple[float, float]],
+                        pub_indices: List[int]) -> Dict:
+        """
+        Order an explicitly chosen set of pubs into the shortest walking route.
+
+        Unlike plan_crawl, which picks *which* pubs to visit from a corridor between
+        start and end, this visits exactly the pubs given, in whatever order is
+        shortest. The corridor's forward-progress constraint deliberately does not
+        apply here: a hand-picked set may loop back on itself.
+
+        Args:
+            start_point: (longitude, latitude) starting coordinates
+            end_point: (longitude, latitude) ending coordinates, or None for an
+                open-ended route that finishes at the last pub
+            pub_indices: pub indices to visit (order irrelevant, duplicates not allowed)
+
+        Returns:
+            Dictionary with route details, same shape as plan_crawl
+        """
+        if not pub_indices:
+            raise ValueError("At least one pub is required")
+
+        self.start_point = start_point
+        if end_point is not None:
+            self.end_point = end_point
+
+        # Distances from start (and to end, if any) are not in the precomputed
+        # matrix, so fetch them from OSRM first.
+        self.precompute_endpoint_distances(start_point, end_point, pub_indices)
+
+        if len(pub_indices) <= EXACT_MAX_PUBS:
+            order = self._solve_exact_path(pub_indices, end_point is not None)
+        else:
+            order = self._solve_heuristic_path(pub_indices, end_point is not None)
+
+        route: List = ['start'] + list(order)
+        if end_point is not None:
+            route.append('end')
+
+        total_distance = self.route_distance(route)
+
+        return {
+            'route': route,
+            'pub_ids': [self.pub_ids[idx] if isinstance(idx, int) else None
+                       for idx in route],
+            'total_distance': total_distance,
+            'estimated_time_minutes': total_distance / 80.0,  # ~80m/min walking speed
+            'num_pubs': len(pub_indices)
+        }
+
+    def _path_cost(self, order: List[int], has_end: bool) -> float:
+        """Cost of visiting `order` from 'start', optionally finishing at 'end'"""
+        cost = float(self.get_distance('start', order[0]))
+        for i in range(len(order) - 1):
+            cost += float(self.get_distance(order[i], order[i + 1]))
+        if has_end:
+            cost += float(self.get_distance(order[-1], 'end'))
+        return cost
+
+    def _solve_exact_path(self, pubs: List[int], has_end: bool) -> List[int]:
+        """
+        Exact shortest ordering via Held-Karp dynamic programming.
+
+        dp[mask][last] is the shortest walk from 'start' that visits exactly the
+        pubs in `mask` and stops at pubs[last]. Only viable for small pub counts;
+        callers must gate on EXACT_MAX_PUBS.
+        """
+        n = len(pubs)
+        if n == 1:
+            return list(pubs)
+
+        # Pub-to-pub costs, resolved once so the DP is pure float arithmetic
+        between = [[float(self.get_distance(a, b)) if a != b else 0.0
+                    for b in pubs] for a in pubs]
+        from_start = [float(self.get_distance('start', p)) for p in pubs]
+        to_end = [float(self.get_distance(p, 'end')) for p in pubs] if has_end else [0.0] * n
+
+        size = 1 << n
+        inf = float('inf')
+        dp = [[inf] * n for _ in range(size)]
+        parent = [[-1] * n for _ in range(size)]
+
+        for i in range(n):
+            dp[1 << i][i] = from_start[i]
+
+        for mask in range(size):
+            row = dp[mask]
+            for last in range(n):
+                cost = row[last]
+                if cost == inf or not (mask >> last) & 1:
+                    continue
+                for nxt in range(n):
+                    if (mask >> nxt) & 1:
+                        continue
+                    new_mask = mask | (1 << nxt)
+                    new_cost = cost + between[last][nxt]
+                    if new_cost < dp[new_mask][nxt]:
+                        dp[new_mask][nxt] = new_cost
+                        parent[new_mask][nxt] = last
+
+        full = size - 1
+        best_last = min(range(n), key=lambda i: dp[full][i] + to_end[i])
+
+        # Walk the parent table back to recover the ordering
+        order: List[int] = []
+        mask, last = full, best_last
+        while last != -1:
+            order.append(pubs[last])
+            prev = parent[mask][last]
+            mask ^= (1 << last)
+            last = prev
+        order.reverse()
+
+        return order
+
+    def _solve_heuristic_path(self, pubs: List[int], has_end: bool) -> List[int]:
+        """
+        Multi-restart local search for pub counts beyond the exact solver's reach.
+
+        Nearest-neighbour seed plus random restarts, each polished with 2-opt and
+        or-opt. No forward-progress constraint - the pubs are the user's choice,
+        so any ordering is legitimate.
+        """
+        seeds = [self._nearest_neighbor_free(pubs)]
+        for _ in range(HEURISTIC_RESTARTS):
+            shuffled = list(pubs)
+            random.shuffle(shuffled)
+            seeds.append(shuffled)
+
+        best_order = seeds[0]
+        best_cost = float('inf')
+
+        for seed in seeds:
+            order = self._two_opt_free(seed, has_end)
+            order = self._or_opt_free(order, has_end)
+            cost = self._path_cost(order, has_end)
+            if cost < best_cost:
+                best_cost = cost
+                best_order = order
+
+        return best_order
+
+    def _nearest_neighbor_free(self, pubs: List[int]) -> List[int]:
+        """Greedy nearest-neighbour ordering from 'start', no backtrack penalty"""
+        remaining = set(pubs)
+        order: List[int] = []
+        current: Any = 'start'
+
+        while remaining:
+            nearest = min(remaining, key=lambda p: float(self.get_distance(current, p)))
+            order.append(nearest)
+            remaining.remove(nearest)
+            current = nearest
+
+        return order
+
+    def _two_opt_free(self, order: List[int], has_end: bool) -> List[int]:
+        """2-opt segment reversal over a pub ordering, no corridor constraint"""
+        order = list(order)
+        best_cost = self._path_cost(order, has_end)
+        improved = True
+
+        while improved:
+            improved = False
+            for i in range(len(order) - 1):
+                for j in range(i + 1, len(order)):
+                    candidate = order[:i] + order[i:j + 1][::-1] + order[j + 1:]
+                    cost = self._path_cost(candidate, has_end)
+                    if cost < best_cost - 1e-9:
+                        order = candidate
+                        best_cost = cost
+                        improved = True
+                        break
+                if improved:
+                    break
+
+        return order
+
+    def _or_opt_free(self, order: List[int], has_end: bool) -> List[int]:
+        """Relocate contiguous segments of 1-3 pubs, no corridor constraint"""
+        order = list(order)
+        best_cost = self._path_cost(order, has_end)
+        improved = True
+        iterations = 0
+        max_iterations = 5
+
+        while improved and iterations < max_iterations:
+            improved = False
+            iterations += 1
+
+            for seg_size in (1, 2, 3):
+                if seg_size >= len(order):
+                    continue
+
+                for i in range(len(order) - seg_size + 1):
+                    segment = order[i:i + seg_size]
+                    without = order[:i] + order[i + seg_size:]
+
+                    for j in range(len(without) + 1):
+                        if j == i:
+                            continue
+                        candidate = without[:j] + segment + without[j:]
+                        cost = self._path_cost(candidate, has_end)
+                        if cost < best_cost - 1e-9:
+                            order = candidate
+                            best_cost = cost
+                            improved = True
+                            break
+
+                    if improved:
+                        break
+
+                if improved:
+                    break
+
+        return order
 
     def select_candidate_pubs(self, start: Tuple[float, float],
                              end: Tuple[float, float],
@@ -168,21 +394,27 @@ class PubCrawlPlanner:
         return [pub_idx for _, _, pub_idx in top_candidates]
 
     def precompute_endpoint_distances(self, start: Tuple[float, float],
-                                     end: Tuple[float, float],
+                                     end: Optional[Tuple[float, float]],
                                      candidate_pub_ids: List[int]):
-        """Pre-fetch distances from start/end to all candidate pubs"""
+        """Pre-fetch distances from start/end to all candidate pubs
+
+        `end` may be None for open-ended routes, in which case only the
+        start → candidate distances are fetched and cached.
+        """
         candidate_coords = [self.pub_coords[idx] for idx in candidate_pub_ids]
 
         # Batch API call: start → all candidates
         start_distances = self.osrm_client.get_distances_from_point(start, candidate_coords)
 
         # Batch API call: all candidates → end
-        end_distances = self.osrm_client.get_distances_to_point(candidate_coords, end)
+        end_distances = (self.osrm_client.get_distances_to_point(candidate_coords, end)
+                         if end is not None else None)
 
         # Cache these
         for i, pub_idx in enumerate(candidate_pub_ids):
             self.distance_cache[('start', pub_idx)] = start_distances[i]
-            self.distance_cache[(pub_idx, 'end')] = end_distances[i]
+            if end_distances is not None:
+                self.distance_cache[(pub_idx, 'end')] = end_distances[i]
 
     def compute_corridor_distance_filter(self, start: Tuple[float, float],
                                         end: Tuple[float, float],

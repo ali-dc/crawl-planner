@@ -95,6 +95,34 @@ The planner uses a multi-phase approach:
    - `total_distance + uniformity_weight * std_dev_of_segments`
    - Higher `uniformity_weight` (e.g., 0.99) favors evenly-spaced stops
 
+### Fixed-Pub Mode (user picks the pubs)
+
+`POST /api/plan-selected` takes an explicit list of pub IDs and only decides the **order**.
+`PubCrawlPlanner.plan_fixed_pubs()` handles it, and deliberately shares none of the corridor
+machinery above:
+
+- **No forward-progress constraint.** `two_opt_with_fixed_endpoints` / `or_opt_refine` /
+  `nearest_neighbor_order` all reject reorderings that fail
+  `violates_forward_progress_constraint` and bias the greedy seed with a backtrack penalty. That
+  is right for a corridor and wrong for a hand-picked set, which may loop or double back. Fixed-pub
+  mode uses its own `_two_opt_free` / `_or_opt_free` / `_nearest_neighbor_free` instead. Do not
+  "de-duplicate" these back into the corridor versions.
+- **Exact below `EXACT_MAX_PUBS` (12)**: `_solve_exact_path` is Held-Karp DP, so the ordering is
+  provably shortest (~20ms at n=12). Above that, `_solve_heuristic_path` does a nearest-neighbour
+  seed plus `HEURISTIC_RESTARTS` random restarts, each polished with 2-opt and or-opt (~0.5s at
+  n=25, the request cap).
+- **No uniformity weighting.** The pubs are the user's choice, so spacing is not the planner's to
+  trade against; the exact DP cannot optimise a std-dev term anyway. Shared routes from this mode
+  store `uniformity_weight = 0`.
+- **The end point is optional.** Without one the route is `['start', i, j, k]` with no `'end'`
+  marker and finishes at the last pub. `precompute_endpoint_distances` accepts `end=None` and then
+  caches only the `('start', idx)` distances.
+
+Because `shared_routes.end_longitude/end_latitude` are NOT NULL and the app only ever runs
+`Base.metadata.create_all` (no migrations), an open-ended route stores the **last pub's**
+coordinates in those columns. The absence of `'end'` in the stored `route_indices` is what marks a
+route as open-ended; `SharedRoute.tsx` reads that to decide whether to draw a finish flag.
+
 ### External Service Integration
 
 **OSRM Client** (`osrm_client.py`):
@@ -511,6 +539,9 @@ The FastAPI implementation (`app.py`) wraps the core planner logic with HTTP end
 - `GET /pubs`: List all pubs (supports pagination with `skip` and `limit` query params)
 - `GET /pubs/{pub_id}`: Get details for a specific pub
 - `POST /plan`: Plan an optimized pub crawl route (main endpoint)
+- `POST /plan-selected`: Shortest route through an explicit list of pub IDs
+  (`start_point`, optional `end_point`, `pub_ids` 1-25, `include_directions`). Returns the same
+  `PlanCrawlResponse` as `/plan`. 404 on an unknown pub ID; duplicate IDs are de-duplicated.
 - `POST /directions`: Get turn-by-turn directions for a route
 - `GET /status`: Check precomputation status
 
@@ -912,8 +943,15 @@ The frontend is a React + TypeScript application built with Vite. It provides an
 - Orchestrates the map, form, results, and UI layout
 
 **Components** (`src/components/`):
-- **Map components**: Interactive MapLibre GL maps for showing route visualization
-- **Form components**: Inputs for start location, end location, number of pubs, and uniformity preference
+- **Map components**: Interactive MapLibre GL maps for showing route visualization. In "Pick pubs"
+  mode the whole pub catalogue is drawn as a single GeoJSON circle layer (`pub-catalog`) with
+  data-driven styling for the selected ones — not a DOM marker each, there are hundreds. Clicks are
+  resolved inside the map's own click handler via `queryRenderedFeatures` so a pub click toggles
+  selection instead of dropping a start pin.
+- **Form components** (`BottomBar.tsx`): mode toggle ("Plan for me" / "Pick pubs"), then either the
+  number-of-pubs field or a multi-select `Autocomplete` over the catalogue plus an optional
+  "Set finish" button. `usePlanState` holds `mode` and `selectedPubIds`; switching mode clears any
+  planned route.
 - **Results components**: Display planned routes with distances, times, and pub details
 - **Dialog/Modal components**: Confirmation and informational dialogs
 

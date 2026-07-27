@@ -49,6 +49,24 @@ class PlanCrawlRequest(BaseModel):
     )
 
 
+class PlanSelectedRequest(BaseModel):
+    """Request to route through an explicitly chosen set of pubs"""
+    start_point: CoordinateModel = Field(
+        ..., description="Starting location (longitude, latitude)"
+    )
+    end_point: Optional[CoordinateModel] = Field(
+        default=None,
+        description="Ending location (longitude, latitude). Omit for an open-ended "
+                    "route that finishes at the last pub."
+    )
+    pub_ids: List[str] = Field(
+        ..., min_length=1, max_length=25, description="Pub IDs to visit, in any order"
+    )
+    include_directions: bool = Field(
+        default=True, description="Include turn-by-turn directions in response"
+    )
+
+
 class PubInRoute(BaseModel):
     """A pub in a planned route"""
     index: int = Field(..., description="Position in route (0-indexed)")
