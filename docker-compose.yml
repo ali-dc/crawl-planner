@@ -10,7 +10,7 @@ services:
       - build
 
   osrm:
-    image: ghcr.io/project-osrm/osrm-backend
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
     container_name: osrm-backend
     command: osrm-routed --algorithm mld /data/bristol-latest.osrm --port 5005
     ports:

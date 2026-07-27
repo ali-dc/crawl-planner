@@ -251,6 +251,16 @@ The Vite dev server automatically proxies API requests to `http://localhost:8000
 
 ### OSRM Server
 
+**Version pin**: the OSRM image is pinned to `ghcr.io/project-osrm/osrm-backend:v5.27.1` in both compose
+files and `Dockerfile.osrm-builder`. Upstream `latest` has moved to v6.0.0, which cannot read the v5
+`.osrm` files in `osrm-data/`. Bumping the pin means regenerating that data with the `osrm-builder`
+profile (`docker compose -f docker-compose.prod.yml --profile build run --rm osrm-builder`), which
+re-downloads the Bristol extract and re-runs extract/partition/customize. Keep the pin and the data in
+step — a mismatch stops `osrm-routed` from starting at all.
+
+Note also that the upstream image is Alpine on some architectures and Debian on others, so
+`Dockerfile.osrm-builder` picks between `apk` and `apt-get` at build time.
+
 **Start the OSRM routing backend (required for distance calculations):**
 ```bash
 docker-compose up -d osrm
