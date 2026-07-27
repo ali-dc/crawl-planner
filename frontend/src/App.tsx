@@ -64,29 +64,27 @@ function App() {
     modeRef.current = state.mode
   }, [state.selectingStart, state.selectingEnd, state.mode])
 
-  // Load the pub catalogue the first time it is needed
-  useEffect(() => {
-    if (state.mode !== 'select' || pubCatalog.length > 0 || catalogLoading) return
+  // Load the pub catalogue the first time it is needed. The in-flight guard is a
+  // ref, not state: keeping it in the dependency list would re-run this effect on
+  // its own setCatalogLoading and cancel the fetch it just started.
+  const catalogRequestedRef = useRef(false)
 
-    let cancelled = false
+  useEffect(() => {
+    if (state.mode !== 'select' || catalogRequestedRef.current) return
+
+    catalogRequestedRef.current = true
     setCatalogLoading(true)
     apiClient
       .getAllPubs()
-      .then((pubs) => {
-        if (!cancelled) setPubCatalog(pubs)
-      })
+      .then(setPubCatalog)
       .catch((error) => {
         console.error('Error loading pubs:', error)
-        if (!cancelled) showMessage('Failed to load pub list', 'error')
+        // Allow another attempt next time the user switches modes
+        catalogRequestedRef.current = false
+        showMessage('Failed to load pub list', 'error')
       })
-      .finally(() => {
-        if (!cancelled) setCatalogLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [state.mode, pubCatalog.length, catalogLoading])
+      .finally(() => setCatalogLoading(false))
+  }, [state.mode])
 
   // Handle map clicks for start/end point selection
   const handleMapClick = useCallback(([lng, lat]: [number, number]) => {
