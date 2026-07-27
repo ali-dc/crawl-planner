@@ -25,6 +25,13 @@ export interface Pub {
   latitude: number
 }
 
+// Legacy data.json files (parse.py output) hold unresolved integer indices here
+// rather than strings, so treat both fields as unknown and render defensively.
+export interface PubAddress {
+  street?: unknown
+  postalCode?: unknown
+}
+
 // A pub as returned by /api/pubs — the catalogue shape, which differs from the
 // Pub shape used inside a planned route (pub_id/pub_name).
 export interface PubCatalogItem {
@@ -32,7 +39,7 @@ export interface PubCatalogItem {
   name: string
   longitude: number
   latitude: number
-  address?: Record<string, unknown> | null
+  address?: PubAddress | null
 }
 
 export interface RouteLeg {

@@ -6,8 +6,10 @@ import {
   Stack,
   Autocomplete,
   Chip,
+  Typography,
   ToggleButton,
   ToggleButtonGroup,
+  createFilterOptions,
   useMediaQuery,
   useTheme,
 } from '@mui/material'
@@ -16,6 +18,7 @@ import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk'
 import FlagIcon from '@mui/icons-material/Flag'
 import type { PlanMode } from '../hooks/usePlanState'
 import type { PubCatalogItem } from '../services/api'
+import { formatPubAddress, pubPostcode, pubSearchText } from '../utils/pubAddress'
 
 interface BottomBarProps {
   startPoint: [number, number] | null
@@ -37,6 +40,11 @@ interface BottomBarProps {
 }
 
 const MAX_SELECTED_PUBS = 25
+
+// Match on street and postcode too, so pubs sharing a name can be told apart
+const filterPubs = createFilterOptions<PubCatalogItem>({
+  stringify: pubSearchText,
+})
 
 const BottomBar: React.FC<BottomBarProps> = ({
   startPoint,
@@ -131,10 +139,35 @@ const BottomBar: React.FC<BottomBarProps> = ({
                 }
                 onChange={(_, pubs) => onSelectedPubIdsChange(pubs.map((pub) => pub.id))}
                 limitTags={3}
+                filterOptions={filterPubs}
+                renderOption={(props, pub) => {
+                  const { key, ...optionProps } = props
+                  const address = formatPubAddress(pub)
+                  return (
+                    <li key={key} {...optionProps}>
+                      <Box>
+                        <Typography variant="body2">{pub.name}</Typography>
+                        {address && (
+                          <Typography variant="caption" color="text.secondary">
+                            {address}
+                          </Typography>
+                        )}
+                      </Box>
+                    </li>
+                  )
+                }}
                 renderTags={(pubs, getTagProps) =>
                   pubs.map((pub, index) => {
                     const { key, ...tagProps } = getTagProps({ index })
-                    return <Chip key={key} label={pub.name} size="small" {...tagProps} />
+                    const postcode = pubPostcode(pub)
+                    return (
+                      <Chip
+                        key={key}
+                        label={postcode ? `${pub.name} (${postcode})` : pub.name}
+                        size="small"
+                        {...tagProps}
+                      />
+                    )
                   })
                 }
                 renderInput={(params) => (
@@ -145,7 +178,7 @@ const BottomBar: React.FC<BottomBarProps> = ({
                     helperText={
                       selectedPubIds.length >= MAX_SELECTED_PUBS
                         ? `Maximum ${MAX_SELECTED_PUBS} pubs`
-                        : 'Or tap pubs on the map'
+                        : 'Search by name, street or postcode — or tap pubs on the map'
                     }
                   />
                 )}

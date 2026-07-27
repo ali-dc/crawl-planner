@@ -4,9 +4,10 @@ import math
 from typing import List, Tuple, Dict, Union, Any, cast, Optional
 from osrm_client import OSRMClient
 
-# Largest pub count for which the fixed-pub mode solves the ordering exactly
-# (Held-Karp is O(2^n * n^2); n=12 is ~590k inner steps, well under a second).
-EXACT_MAX_PUBS = 12
+# Largest pub count for which the fixed-pub mode solves the ordering exactly.
+# Held-Karp costs O(2^n * n^2) time and O(2^n * n) memory, both roughly 2.2x per
+# extra pub: measured 0.24s / 18MB at n=15, 1.2s / 79MB at n=17.
+EXACT_MAX_PUBS = 15
 
 # Restarts used by the heuristic fixed-pub solver above EXACT_MAX_PUBS
 HEURISTIC_RESTARTS = 20

@@ -6,6 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { createStartMarkerElement, createEndMarkerElement } from '../utils/markerIcons'
 import { decodePolyline } from '../utils/polyline'
 import type { PubCatalogItem, Route } from '../services/api'
+import { formatPubAddress } from '../utils/pubAddress'
 import bristolBoundaryUrl from '../assets/bristol_boundary.geojson?url'
 
 const BRISTOL_CENTER: [number, number] = [-2.5879, 51.4545]
@@ -213,7 +214,12 @@ const Map: React.FC<MapProps> = ({
       features: pubCatalog.map((pub) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [pub.longitude, pub.latitude] },
-        properties: { id: pub.id, name: pub.name, selected: selected.has(pub.id) },
+        properties: {
+          id: pub.id,
+          // Postcode included so same-named pubs are distinguishable on hover
+          label: [pub.name, formatPubAddress(pub)].filter(Boolean).join(' · '),
+          selected: selected.has(pub.id),
+        },
       })),
     }
 
@@ -244,8 +250,8 @@ const Map: React.FC<MapProps> = ({
 
     const handleEnter = (e: maplibregl.MapLayerMouseEvent) => {
       mapInstance.getCanvas().style.cursor = 'pointer'
-      const name = e.features?.[0]?.properties?.name as string | undefined
-      if (name) hoverPopup.setLngLat(e.lngLat).setText(name).addTo(mapInstance)
+      const label = e.features?.[0]?.properties?.label as string | undefined
+      if (label) hoverPopup.setLngLat(e.lngLat).setText(label).addTo(mapInstance)
     }
     const handleMove = (e: maplibregl.MapLayerMouseEvent) => {
       hoverPopup.setLngLat(e.lngLat)

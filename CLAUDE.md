@@ -107,8 +107,9 @@ machinery above:
   is right for a corridor and wrong for a hand-picked set, which may loop or double back. Fixed-pub
   mode uses its own `_two_opt_free` / `_or_opt_free` / `_nearest_neighbor_free` instead. Do not
   "de-duplicate" these back into the corridor versions.
-- **Exact below `EXACT_MAX_PUBS` (12)**: `_solve_exact_path` is Held-Karp DP, so the ordering is
-  provably shortest (~20ms at n=12). Above that, `_solve_heuristic_path` does a nearest-neighbour
+- **Exact up to `EXACT_MAX_PUBS` (15)**: `_solve_exact_path` is Held-Karp DP, so the ordering is
+  provably shortest (~0.24s and 18MB at n=15; both time and memory grow ~2.2x per extra pub, so
+  raising this gets expensive fast). Above that, `_solve_heuristic_path` does a nearest-neighbour
   seed plus `HEURISTIC_RESTARTS` random restarts, each polished with 2-opt and or-opt (~0.5s at
   n=25, the request cap).
 - **No uniformity weighting.** The pubs are the user's choice, so spacing is not the planner's to
