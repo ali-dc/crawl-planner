@@ -1,15 +1,26 @@
-#!/bin/bash
+#!/bin/sh
+# Run by entrypoint.sh with sh, so keep this POSIX - busybox does not expand
+# bash brace ranges like {1..30}
 
 # Wait for the app to be ready
 echo "Waiting for app to be ready..."
-for i in {1..30}; do
+i=1
+ready=0
+while [ "$i" -le 30 ]; do
   if curl -s http://localhost:8000/api/health >/dev/null 2>&1; then
     echo "App is ready!"
+    ready=1
     break
   fi
   echo "Waiting... ($i/30)"
+  i=$((i + 1))
   sleep 2
 done
+
+if [ "$ready" -eq 0 ]; then
+  echo "App did not become ready in 60s; skipping precomputation check"
+  exit 0
+fi
 
 # Use DISTANCES_FILE environment variable or default
 DISTANCES_FILE="${DISTANCES_FILE:-/app/data/pub_distances.pkl}"

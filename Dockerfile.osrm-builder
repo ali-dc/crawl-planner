@@ -1,4 +1,4 @@
-FROM ghcr.io/project-osrm/osrm-backend:v5.27.1
+FROM ghcr.io/project-osrm/osrm-backend:v6.0.0
 
 # The upstream osrm-backend image is Alpine on some architectures and Debian on
 # others, so pick the package manager at build time rather than assuming apk

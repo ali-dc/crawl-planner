@@ -251,12 +251,22 @@ The Vite dev server automatically proxies API requests to `http://localhost:8000
 
 ### OSRM Server
 
-**Version pin**: the OSRM image is pinned to `ghcr.io/project-osrm/osrm-backend:v5.27.1` in both compose
-files and `Dockerfile.osrm-builder`. Upstream `latest` has moved to v6.0.0, which cannot read the v5
-`.osrm` files in `osrm-data/`. Bumping the pin means regenerating that data with the `osrm-builder`
-profile (`docker compose -f docker-compose.prod.yml --profile build run --rm osrm-builder`), which
-re-downloads the Bristol extract and re-runs extract/partition/customize. Keep the pin and the data in
-step — a mismatch stops `osrm-routed` from starting at all.
+**Version pin**: the OSRM image is pinned to `ghcr.io/project-osrm/osrm-backend:v6.0.0` in both compose
+files and `Dockerfile.osrm-builder`, matching the version that built the `.osrm` files in `osrm-data/`.
+
+OSRM refuses to load data prepared by a different version — `osrm-routed` exits with code 3 and the
+container crash-loops, which surfaces in the app as `Failed to resolve 'osrm'` on any routing call.
+Check which version built the data before changing the pin:
+
+```bash
+docker run --rm -v ./osrm-data:/data ghcr.io/project-osrm/osrm-backend:v6.0.0 \
+  osrm-routed --algorithm mld /data/bristol-latest.osrm
+# "prepared with OSRM X but this is Y" names both versions
+```
+
+Changing the pin means regenerating the data with the `osrm-builder` profile
+(`docker compose -f docker-compose.prod.yml --profile build run --rm osrm-builder`), which re-downloads
+the Bristol extract and re-runs extract/partition/customize. Keep the pin and the data in step.
 
 Note also that the upstream image is Alpine on some architectures and Debian on others, so
 `Dockerfile.osrm-builder` picks between `apk` and `apt-get` at build time.
