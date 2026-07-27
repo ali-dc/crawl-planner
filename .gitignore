@@ -2,5 +2,8 @@ osrm-data/
 raw.data
 __pycache__/
 pub_distances.pkl
+data.json.bak
+data.json.tmp
 .env
 shared_routes.db
+data/data.json

@@ -37,6 +37,7 @@ from osrm_client import OSRMClient
 from planner import PubCrawlPlanner
 from precompute_distances import load_distance_matrix, precompute_distance_matrix
 from parse import parse_data, load_raw_data
+from fetch_pubs import refresh_pub_data, PubFetchError
 from polyline_utils import encode_polyline
 from models import Base, SharedRoute
 
@@ -80,6 +81,11 @@ class PubCrawlPlannerApp:
         self.osrm_client = OSRMClient(base_url=self.osrm_url)
         self.precompute_in_progress = False
         self.cleanup_task: Optional[asyncio.Task] = None
+        self.pub_refresh_task: Optional[asyncio.Task] = None
+
+        # Periodic pub data refresh from the upstream API
+        self.pub_refresh_enabled = os.getenv("PUB_REFRESH_ENABLED", "true").lower() == "true"
+        self.pub_refresh_interval_days = float(os.getenv("PUB_REFRESH_INTERVAL_DAYS", "30"))
 
         # Create FastAPI app with lifespan
         self.app = FastAPI(
@@ -112,6 +118,7 @@ class PubCrawlPlannerApp:
         )
         self.app.post("/api/precompute", response_model=dict)(self.trigger_precomputation)
         self.app.post("/api/parse", response_model=dict)(self.parse_raw_data)
+        self.app.post("/api/refresh-pubs", response_model=dict)(self.refresh_pubs)
         self.app.get("/api/status", response_model=PrecomputeStatusResponse)(self.get_status)
         # Shareable routes endpoints
         self.app.post("/api/routes", response_model=SharedRouteResponse)(self.create_shared_route)
@@ -130,12 +137,34 @@ class PubCrawlPlannerApp:
         print("Database initialized")
 
         print("Loading pub data...")
-        self.load_pubs_data()
+        if not self.load_pubs_data():
+            # data.json is not in the repo, so a fresh deployment has to fetch it
+            print(f"No pub data at {self.data_file}, fetching from the upstream API...")
+            try:
+                result = await asyncio.to_thread(refresh_pub_data, self.data_file)
+                print(f"Fetched {result['pubs_count']} pubs")
+                self.load_pubs_data()
+            except Exception as e:
+                print(f"Failed to fetch pub data on startup: {e}")
         print(f"Loaded {len(self.pubs_data)} pubs")
 
         print("Loading distance matrix...")
         if self.load_distance_data():
             print("Distance matrix loaded successfully")
+            # A matrix built from a different pub list would map indices onto the
+            # wrong pubs, so discard it and let init-precompute rebuild
+            if self.planner is not None and list(self.planner.pub_ids) != [
+                pub.id for pub in self.pubs_data
+            ]:
+                print(
+                    "Warning: Distance matrix does not match the current pub list. "
+                    "Discarding it - run /precompute to rebuild."
+                )
+                self.planner = None
+                try:
+                    os.remove(self.distances_file)
+                except OSError as e:
+                    print(f"Could not remove the stale distance matrix: {e}")
         else:
             print(
                 "Warning: Distance matrix not found. Run /precompute endpoint first."
@@ -145,11 +174,20 @@ class PubCrawlPlannerApp:
         self.cleanup_task = asyncio.create_task(self._cleanup_expired_routes())
         print("Started expired routes cleanup task")
 
+        # Start periodic pub data refresh
+        if self.pub_refresh_enabled:
+            self.pub_refresh_task = asyncio.create_task(self._periodic_pub_refresh())
+            print(
+                f"Started pub refresh task (every {self.pub_refresh_interval_days} days)"
+            )
+
         yield
 
         # Shutdown
         if self.cleanup_task:
             self.cleanup_task.cancel()
+        if self.pub_refresh_task:
+            self.pub_refresh_task.cancel()
         self.engine.dispose()
         print("Shutting down...")
 
@@ -498,6 +536,101 @@ class PubCrawlPlannerApp:
         finally:
             self.precompute_in_progress = False
 
+    def _refresh_pub_data_sync(self) -> dict:
+        """Fetch the latest pubs and rebuild the distance matrix if anything changed
+
+        Blocking: runs the OSRM precomputation inline, so callers should push
+        this onto a thread rather than running it on the event loop.
+
+        Returns:
+            Summary dict describing what changed and whether distances were recomputed
+        """
+        result = refresh_pub_data(self.data_file)
+
+        if not result["changed"] and self.planner is not None:
+            result["recomputed"] = False
+            return result
+
+        if not self.load_pubs_data():
+            raise PubFetchError(f"Pub data missing after refresh: {self.data_file}")
+
+        pub_ids = [pub.id for pub in self.pubs_data]
+        pub_coords = [(pub.longitude, pub.latitude) for pub in self.pubs_data]
+
+        precompute_distance_matrix(
+            pub_coords, pub_ids, self.distances_file, self.osrm_url
+        )
+
+        if not self.load_distance_data():
+            raise PubFetchError("Failed to load the recomputed distance matrix")
+
+        result["recomputed"] = True
+        return result
+
+    async def refresh_pubs(self) -> dict:
+        """
+        Fetch the latest pub list from the upstream API and rebuild distances
+
+        The distance matrix is only recomputed when the pub list actually
+        changed, so calling this repeatedly is cheap.
+        """
+        if self.precompute_in_progress:
+            raise HTTPException(
+                status_code=409,
+                detail="Precomputation already in progress",
+            )
+
+        try:
+            self.precompute_in_progress = True
+            result = await asyncio.to_thread(self._refresh_pub_data_sync)
+        except PubFetchError as e:
+            raise HTTPException(status_code=502, detail=f"Pub refresh failed: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Pub refresh failed: {str(e)}")
+        finally:
+            self.precompute_in_progress = False
+
+        return {
+            "status": "success",
+            "message": (
+                f"Refreshed {result['pubs_count']} pubs "
+                f"({len(result['added'])} added, {len(result['removed'])} removed)"
+            ),
+            **result,
+        }
+
+    async def _periodic_pub_refresh(self):
+        """Background task that refreshes pub data on a fixed interval"""
+        interval_seconds = self.pub_refresh_interval_days * 24 * 3600
+
+        while True:
+            try:
+                await asyncio.sleep(interval_seconds)
+
+                if self.precompute_in_progress:
+                    print("Skipping scheduled pub refresh: precomputation in progress")
+                    continue
+
+                print("Running scheduled pub refresh...")
+                self.precompute_in_progress = True
+                try:
+                    result = await asyncio.to_thread(self._refresh_pub_data_sync)
+                finally:
+                    self.precompute_in_progress = False
+
+                if result["changed"]:
+                    print(
+                        f"Pub refresh: {result['pubs_count']} pubs "
+                        f"({len(result['added'])} added, {len(result['removed'])} removed, "
+                        f"{len(result['moved'])} moved)"
+                    )
+                else:
+                    print("Pub refresh: no changes")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"Scheduled pub refresh failed: {e}")
+
     async def parse_raw_data(self) -> dict:
         """
         Parse raw pub data from raw.data file
@@ -651,22 +784,40 @@ class PubCrawlPlannerApp:
                 route.last_accessed_at = datetime.utcnow()  # type: ignore[assignment]
                 db.commit()
 
-                # Build the response with full pub details
+                # Build the response with full pub details.
+                # Resolve by stored pub ID rather than matrix index: the pub list
+                # is refreshed periodically, which shifts indices for older routes.
+                pubs_by_id = {pub.id: pub for pub in self.pubs_data}
+                stored_pub_ids = route.get_selected_pub_ids()
+                pub_positions = [
+                    idx
+                    for idx in route.get_route_indices()
+                    if idx != "start" and idx != "end"
+                ]
+
                 pubs_in_route = []
-                for i, pub_index in enumerate(route.get_route_indices()):
-                    if pub_index == "start" or pub_index == "end":
-                        continue
-                    if 0 <= pub_index < len(self.pubs_data):
+                for i, pub_index in enumerate(pub_positions):
+                    pub: Optional[PubModel] = None
+                    if i < len(stored_pub_ids):
+                        # A pub that has since been delisted is dropped rather than
+                        # silently replaced by whatever now sits at its old index
+                        pub = pubs_by_id.get(stored_pub_ids[i])
+                    elif isinstance(pub_index, int) and 0 <= pub_index < len(self.pubs_data):
+                        # Fall back to the index for routes stored without pub IDs
                         pub = self.pubs_data[pub_index]
-                        pubs_in_route.append(
-                            PubInRoute(
-                                index=pub_index,
-                                pub_id=pub.id,
-                                pub_name=pub.name,
-                                longitude=pub.longitude,
-                                latitude=pub.latitude,
-                            )
+
+                    if pub is None:
+                        continue
+
+                    pubs_in_route.append(
+                        PubInRoute(
+                            index=pub_index,
+                            pub_id=pub.id,
+                            pub_name=pub.name,
+                            longitude=pub.longitude,
+                            latitude=pub.latitude,
                         )
+                    )
 
                 # Reconstruct legs from stored data
                 legs = None

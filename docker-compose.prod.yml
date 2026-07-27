@@ -27,6 +27,8 @@ services:
       DATA_FILE: /app/data/data.json
       DISTANCES_FILE: /app/data/pub_distances.pkl
       RAW_DATA_FILE: /app/data/raw.data
+      PUB_REFRESH_ENABLED: "true"
+      PUB_REFRESH_INTERVAL_DAYS: "30"
       DATABASE_URL: sqlite:////app/data/shared_routes.db
     volumes:
       - ./data:/app/data

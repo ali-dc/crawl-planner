@@ -18,6 +18,7 @@ COPY backend/planner.py .
 COPY backend/osrm_client.py .
 COPY backend/api_schemas.py .
 COPY backend/parse.py .
+COPY backend/fetch_pubs.py .
 COPY backend/precompute_distances.py .
 COPY backend/polyline_utils.py .
 COPY backend/models.py .
