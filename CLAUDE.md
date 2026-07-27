@@ -540,9 +540,12 @@ A background asyncio task (`PubCrawlPlannerApp._periodic_pub_refresh`) runs ever
 `PUB_REFRESH_INTERVAL_DAYS` (default 30) while the app is up. Each run:
 
 1. Fetches and validates the upstream pub list
-2. Leaves `data.json` alone and skips the rest if nothing changed
-3. Otherwise writes `data.json` (backing up the old one to `data.json.bak`), reloads `pubs_data`,
-   recomputes the OSRM distance matrix, and reloads the planner
+2. Skips the rest only if nothing changed **and** the loaded matrix still matches `pubs_data` —
+   `data.json` is written before the precompute runs, so a refresh that failed part-way leaves the two
+   out of step and the next run has to finish the job
+3. Otherwise writes `data.json` (backing up the old one to `data.json.bak`), reloads `pubs_data`, drops
+   the planner so `/plan` returns 503 instead of routes built on the old matrix, recomputes distances,
+   and reloads the planner
 
 The timer restarts on app restart, so a container that restarts more often than the interval will
 never refresh on its own — trigger it manually in that case. Set `PUB_REFRESH_ENABLED=false` to

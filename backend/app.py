@@ -153,9 +153,7 @@ class PubCrawlPlannerApp:
             print("Distance matrix loaded successfully")
             # A matrix built from a different pub list would map indices onto the
             # wrong pubs, so discard it and let init-precompute rebuild
-            if self.planner is not None and list(self.planner.pub_ids) != [
-                pub.id for pub in self.pubs_data
-            ]:
+            if not self.distance_matrix_matches_pubs():
                 print(
                     "Warning: Distance matrix does not match the current pub list. "
                     "Discarding it - run /precompute to rebuild."
@@ -218,6 +216,16 @@ class PubCrawlPlannerApp:
         except Exception as e:
             print(f"Error loading distance matrix: {e}")
             return False
+
+    def distance_matrix_matches_pubs(self) -> bool:
+        """Check the loaded matrix was built from the pub list currently in memory
+
+        Route indices are positions in this matrix, so a mismatch means every
+        planned route maps onto the wrong pubs.
+        """
+        if self.planner is None:
+            return False
+        return list(self.planner.pub_ids) == [pub.id for pub in self.pubs_data]
 
     def is_osrm_available(self) -> bool:
         """Check if OSRM server is running"""
@@ -547,12 +555,18 @@ class PubCrawlPlannerApp:
         """
         result = refresh_pub_data(self.data_file)
 
-        if not result["changed"] and self.planner is not None:
+        if not self.load_pubs_data():
+            raise PubFetchError(f"Pub data missing after refresh: {self.data_file}")
+
+        # "Nothing changed upstream" does not imply the matrix is usable: a previous
+        # refresh may have written data.json and then failed to recompute
+        if not result["changed"] and self.distance_matrix_matches_pubs():
             result["recomputed"] = False
             return result
 
-        if not self.load_pubs_data():
-            raise PubFetchError(f"Pub data missing after refresh: {self.data_file}")
+        # pubs_data has moved ahead of the matrix, so stop serving routes off it.
+        # If the precompute below fails, /plan returns 503 rather than wrong pubs.
+        self.planner = None
 
         pub_ids = [pub.id for pub in self.pubs_data]
         pub_coords = [(pub.longitude, pub.latitude) for pub in self.pubs_data]
