@@ -11,8 +11,7 @@ services:
     image: ghcr.io/project-osrm/osrm-backend:v6.0.0
     container_name: osrm-backend
     command: osrm-routed --algorithm mld /data/bristol-latest.osrm --port 5005
-    ports:
-      - "5005:5005"
+    # No host port: the app reaches it as osrm:5005 on the compose network.
     volumes:
       - ./osrm-data:/data
     restart: unless-stopped
